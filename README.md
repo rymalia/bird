@@ -1,12 +1,13 @@
-# twitter-cli
+# bird
 
-A command-line tool for posting tweets and replies via Twitter's GraphQL API.
+A command-line tool for posting tweets and replies via Twitter/X's GraphQL API.
 
 ## Installation
 
 ```bash
-cd ~/Projects/twitter-cli
+cd ~/Projects/bird
 pnpm install
+pnpm run binary  # Creates the 'bird' executable
 ```
 
 ## Usage
@@ -14,23 +15,31 @@ pnpm install
 ### Post a tweet
 
 ```bash
-./twitter-cli tweet "Hello from twitter-cli!"
+bird tweet "Hello from bird!"
 ```
 
 ### Reply to a tweet
 
 ```bash
 # Using tweet URL
-./twitter-cli reply "https://x.com/user/status/1234567890" "This is my reply"
+bird reply "https://x.com/user/status/1234567890" "This is my reply"
 
 # Using tweet ID directly
-./twitter-cli reply 1234567890 "This is my reply"
+bird reply 1234567890 "This is my reply"
+```
+
+### Read a tweet
+
+```bash
+# Get tweet content by URL or ID
+bird read "https://x.com/user/status/1234567890"
+bird read 1234567890 --json
 ```
 
 ### Check credentials
 
 ```bash
-./twitter-cli check
+bird check
 ```
 
 ## Authentication
@@ -39,14 +48,14 @@ The tool resolves credentials in the following order of priority:
 
 1. **CLI arguments** (highest priority)
    ```bash
-   ./twitter-cli --auth-token "xxx" --ct0 "yyy" tweet "Hello"
+   bird --auth-token "xxx" --ct0 "yyy" tweet "Hello"
    ```
 
 2. **Environment variables**
    ```bash
    export AUTH_TOKEN="xxx"
    export CT0="yyy"
-   ./twitter-cli tweet "Hello"
+   bird tweet "Hello"
    ```
 
    Alternative env var names: `TWITTER_AUTH_TOKEN`, `TWITTER_CT0`

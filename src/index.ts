@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /**
- * twitter-cli - CLI tool for posting tweets and replies
+ * bird - CLI tool for posting tweets and replies
  *
  * Usage:
- *   twitter-cli tweet "Hello world!"
- *   twitter-cli reply <tweet-id> "This is a reply"
- *   twitter-cli reply <tweet-url> "This is a reply"
+ *   bird tweet "Hello world!"
+ *   bird reply <tweet-id> "This is a reply"
+ *   bird reply <tweet-url> "This is a reply"
+ *   bird read <tweet-id-or-url>
  */
 
 import { Command } from 'commander';
@@ -14,7 +15,7 @@ import { TwitterClient } from './lib/twitter-client.js';
 
 const program = new Command();
 
-program.name('twitter-cli').description('Post tweets and replies via Twitter GraphQL API').version('0.1.0');
+program.name('bird').description('Post tweets and replies via Twitter/X GraphQL API').version('0.1.0');
 
 // Global options for authentication
 program

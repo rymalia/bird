@@ -1,11 +1,11 @@
 {
-	"name": "twitter-cli",
+	"name": "bird",
 	"version": "0.1.0",
-	"description": "CLI tool for tweeting and replying via Twitter GraphQL API",
+	"description": "CLI tool for tweeting and replying via Twitter/X GraphQL API",
 	"type": "module",
 	"main": "dist/index.js",
 	"bin": {
-		"twitter-cli": "dist/index.js"
+		"bird": "dist/index.js"
 	},
 	"scripts": {
 		"build": "tsc",
@@ -15,7 +15,7 @@
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
 		"format": "biome format --write .",
-		"binary": "bun build --compile --minify src/index.ts --outfile twitter-cli"
+		"binary": "bun build --compile --minify src/index.ts --outfile bird"
 	},
 	"dependencies": {
 		"commander": "^12.1.0"

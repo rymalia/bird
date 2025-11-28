@@ -3,3 +3,4 @@ dist/
 *.log
 .DS_Store
 twitter-cli.bin
+bird

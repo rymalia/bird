@@ -88,6 +88,15 @@ When `allowChrome` or `allowFirefox` is set to `false`, that source is skipped e
 bird tweet "Hello from bird!"
 ```
 
+### Media uploads (Sweetistics only)
+- Attach images or a single video with `--media` (repeatable) and optional `--alt` (aligned by order):
+  - `bird --engine sweetistics tweet "hi" --media img.png --alt "desc"`
+  - Up to 4 images, or 1 video (no mixing video+images). Supported: jpg, jpeg, png, webp, gif, mp4, mov.
+- Media uploads currently require the Sweetistics engine (API key). GraphQL-only mode will reject `--media`.
+- All Sweetistics calls have a 15s timeout so the CLI won’t hang if the API is slow or unreachable.
+
+⚠️ GraphQL mode uses X’s internal endpoints and is rate‑limited aggressively; expect 429s if you run many reads/writes without Sweetistics.
+
 ### Reply to a tweet
 
 ```bash

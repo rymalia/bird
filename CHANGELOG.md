@@ -19,3 +19,4 @@
 ### Fixed
 - Fallback to scraping the authenticated settings page when Twitter account APIs return 404, so `whoami` still resolves the user.
 - Sweetistics calls now time out after 15s to avoid hanging CLI commands when the API is slow or unresponsive.
+- Sweetistics tweeting now supports media uploads (images or single video) via new CLI `--media/--alt` flags.

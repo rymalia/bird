@@ -24,6 +24,10 @@ const program = new Command();
 
 const isTty = process.stdout.isTTY;
 const wrap = (styler: (text: string) => string) => (text: string) => (isTty ? styler(text) : text);
+const collect = (value: string, previous: string[] = []) => {
+  previous.push(value);
+  return previous;
+};
 
 const colors = {
   banner: wrap((t) => kleur.bold().blue(t)),
@@ -101,6 +105,8 @@ program
   .option('--ct0 <token>', 'Twitter ct0 cookie')
   .option('--chrome-profile <name>', 'Chrome profile name for cookie extraction', config.chromeProfile)
   .option('--firefox-profile <name>', 'Firefox profile name for cookie extraction', config.firefoxProfile)
+  .option('--media <path>', 'Attach media file (repeatable, up to 4 images or 1 video)', collect, [])
+  .option('--alt <text>', 'Alt text for the corresponding --media (repeatable)', collect, [])
   .option('--sweetistics-api-key <key>', 'Sweetistics API key (or set SWEETISTICS_API_KEY)')
   .option(
     '--sweetistics-base-url <url>',
@@ -114,6 +120,8 @@ program
   );
 
 type EngineMode = 'graphql' | 'sweetistics' | 'auto';
+
+type MediaSpec = { path: string; alt?: string; mime: string; buffer: Buffer };
 
 function resolveSweetisticsConfig(options: { sweetisticsApiKey?: string; sweetisticsBaseUrl?: string }) {
   const apiKey =
@@ -136,6 +144,36 @@ function shouldUseSweetistics(engine: EngineMode, hasApiKey: boolean): boolean {
   if (engine === 'sweetistics') return true;
   if (engine === 'graphql') return false;
   return hasApiKey; // auto
+}
+
+function detectMime(path: string): string | null {
+  const ext = path.toLowerCase();
+  if (ext.endsWith('.jpg') || ext.endsWith('.jpeg')) return 'image/jpeg';
+  if (ext.endsWith('.png')) return 'image/png';
+  if (ext.endsWith('.webp')) return 'image/webp';
+  if (ext.endsWith('.gif')) return 'image/gif';
+  if (ext.endsWith('.mp4') || ext.endsWith('.m4v')) return 'video/mp4';
+  if (ext.endsWith('.mov')) return 'video/quicktime';
+  return null;
+}
+
+function loadMedia(opts: { media: string[]; alts: string[] }): MediaSpec[] {
+  if (opts.media.length === 0) return [];
+  const specs: MediaSpec[] = [];
+  for (const [index, path] of opts.media.entries()) {
+    const mime = detectMime(path);
+    if (!mime) {
+      throw new Error(`Unsupported media type for ${path}. Supported: jpg, jpeg, png, webp, gif, mp4, mov`);
+    }
+    const buffer = readFileSync(path);
+    specs.push({ path, mime, buffer, alt: opts.alts[index] });
+  }
+
+  const videoCount = specs.filter((m) => m.mime.startsWith('video/')).length;
+  if (videoCount > 1) throw new Error('Only one video can be attached');
+  if (videoCount === 1 && specs.length > 1) throw new Error('Video cannot be combined with other media');
+  if (specs.length > 4) throw new Error('Maximum 4 media attachments');
+  return specs;
 }
 
 function printTweets(
@@ -170,6 +208,13 @@ program
   .argument('<text>', 'Tweet text')
   .action(async (text: string) => {
     const opts = program.opts();
+    let media: MediaSpec[] = [];
+    try {
+      media = loadMedia({ media: opts.media ?? [], alts: opts.alt ?? [] });
+    } catch (error) {
+      console.error(`❌ ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    }
     const sweetistics = resolveSweetisticsConfig({
       sweetisticsApiKey: opts.sweetisticsApiKey || config.sweetisticsApiKey,
       sweetisticsBaseUrl: opts.sweetisticsBaseUrl || config.sweetisticsBaseUrl,
@@ -187,7 +232,23 @@ program
           baseUrl: sweetistics.baseUrl,
           apiKey: sweetistics.apiKey,
         });
-        const result = await client.tweet(text);
+        let mediaIds: string[] | undefined;
+        if (media.length > 0) {
+          const uploaded: string[] = [];
+          for (const item of media) {
+            const res = await client.uploadMedia({
+              data: item.buffer.toString('base64'),
+              mimeType: item.mime,
+              alt: item.alt,
+            });
+            if (!res.success || !res.mediaId) {
+              throw new Error(res.error ?? 'Media upload failed');
+            }
+            uploaded.push(res.mediaId);
+          }
+          mediaIds = uploaded;
+        }
+        const result = await client.tweet(text, undefined, mediaIds);
         if (result.success) {
           console.log('✅ Tweet posted via Sweetistics!');
           if (result.tweetId) {
@@ -201,6 +262,11 @@ program
         console.error(`❌ Sweetistics error: ${error instanceof Error ? error.message : String(error)}`);
         process.exit(1);
       }
+    }
+
+    if (media.length > 0) {
+      console.error('❌ Media uploads are only supported via Sweetistics. Provide SWEETISTICS_API_KEY or --engine sweetistics.');
+      process.exit(1);
     }
 
     const { cookies, warnings } = await resolveCredentials({
@@ -260,6 +326,13 @@ program
   .argument('<text>', 'Reply text')
   .action(async (tweetIdOrUrl: string, text: string) => {
     const opts = program.opts();
+    let media: MediaSpec[] = [];
+    try {
+      media = loadMedia({ media: opts.media ?? [], alts: opts.alt ?? [] });
+    } catch (error) {
+      console.error(`❌ ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(1);
+    }
     const sweetistics = resolveSweetisticsConfig({
       sweetisticsApiKey: opts.sweetisticsApiKey || config.sweetisticsApiKey,
       sweetisticsBaseUrl: opts.sweetisticsBaseUrl || config.sweetisticsBaseUrl,
@@ -278,7 +351,23 @@ program
           baseUrl: sweetistics.baseUrl,
           apiKey: sweetistics.apiKey,
         });
-        const result = await client.tweet(text, tweetId);
+        let mediaIds: string[] | undefined;
+        if (media.length > 0) {
+          const uploaded: string[] = [];
+          for (const item of media) {
+            const res = await client.uploadMedia({
+              data: item.buffer.toString('base64'),
+              mimeType: item.mime,
+              alt: item.alt,
+            });
+            if (!res.success || !res.mediaId) {
+              throw new Error(res.error ?? 'Media upload failed');
+            }
+            uploaded.push(res.mediaId);
+          }
+          mediaIds = uploaded;
+        }
+        const result = await client.tweet(text, tweetId, mediaIds);
         if (result.success) {
           console.log('✅ Reply posted via Sweetistics!');
           if (result.tweetId) {
@@ -292,6 +381,11 @@ program
         console.error(`❌ Sweetistics error: ${error instanceof Error ? error.message : String(error)}`);
         process.exit(1);
       }
+    }
+
+    if (media.length > 0) {
+      console.error('❌ Media uploads are only supported via Sweetistics. Provide SWEETISTICS_API_KEY or --engine sweetistics.');
+      process.exit(1);
     }
 
     const { cookies, warnings } = await resolveCredentials({

@@ -75,10 +75,13 @@ export class SweetisticsClient {
     }
   }
 
-  async tweet(text: string, replyToTweetId?: string): Promise<SweetisticsTweetResult> {
+  async tweet(text: string, replyToTweetId?: string, mediaIds?: string[]): Promise<SweetisticsTweetResult> {
     const payload: Record<string, unknown> = { text };
     if (replyToTweetId) {
       payload.replyToTweetId = replyToTweetId;
+    }
+    if (mediaIds && mediaIds.length > 0) {
+      payload.mediaIds = mediaIds;
     }
 
     let response: Response;
@@ -456,6 +459,41 @@ export class SweetisticsClient {
       }));
 
     return { success: true, tweets };
+  }
+
+  async uploadMedia(input: { data: string; mimeType: string; alt?: string }): Promise<{ success: boolean; mediaId?: string; error?: string }> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/actions/media/upload`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${this.apiKey}`,
+          'content-type': 'application/json',
+          ...(this.userAgent ? { 'user-agent': this.userAgent } : {}),
+        },
+        body: JSON.stringify(input),
+      });
+
+      let body: unknown;
+      try {
+        body = await response.json();
+      } catch (error) {
+        return { success: false, error: this.normalizeError(error) };
+      }
+
+      const mediaId =
+        typeof (body as { mediaId?: unknown })?.mediaId === 'string'
+          ? (body as { mediaId: string }).mediaId
+          : undefined;
+      const errorMessage =
+        typeof (body as { error?: unknown })?.error === 'string' ? (body as { error: string }).error : undefined;
+
+      if (!response.ok || !mediaId) {
+        return { success: false, error: errorMessage ?? `HTTP ${response.status}` };
+      }
+      return { success: true, mediaId };
+    } catch (error) {
+      return { success: false, error: this.normalizeError(error) };
+    }
   }
 
   private async fetchWithTimeout(url: string, init?: RequestInit): Promise<Response> {

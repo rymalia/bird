@@ -1,11 +1,11 @@
 /**
- * Chrome cookie extraction for Twitter authentication
- * Uses macOS sqlite3 CLI and keychain for decryption - no native dependencies!
+ * Browser cookie extraction for Twitter authentication
+ * Uses sqlite3 CLI where possible and binarycookies parsing for Safari.
  */
 
 import { execSync } from 'node:child_process';
 import { createDecipheriv, pbkdf2Sync } from 'node:crypto';
-import { copyFileSync, existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, readdirSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -69,6 +69,158 @@ function getFirefoxCookiesPath(profile?: string): string | null {
   const profilesRoot = getFirefoxProfilesRoot();
   if (!profilesRoot || !existsSync(profilesRoot)) return null;
   return pickFirefoxProfile(profilesRoot, profile);
+}
+
+function getSafariCookiesPath(): string | null {
+  if (process.platform !== 'darwin') return null;
+  const home = process.env.HOME || '';
+  const candidates = [
+    join(home, 'Library', 'Cookies', 'Cookies.binarycookies'),
+    join(home, 'Library', 'Containers', 'com.apple.Safari', 'Data', 'Library', 'Cookies', 'Cookies.binarycookies'),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+const SAFARI_COOKIE_NAMES = new Set(['auth_token', 'ct0']);
+const SAFARI_COOKIE_DOMAINS = ['x.com', 'twitter.com'];
+const SAFARI_PAGE_SIGNATURE = Buffer.from([0x00, 0x00, 0x01, 0x00]);
+
+function matchesSafariDomain(domain: string | null): boolean {
+  if (!domain) return false;
+  const normalized = (domain.startsWith('.') ? domain.slice(1) : domain).toLowerCase();
+  return SAFARI_COOKIE_DOMAINS.some((target) => normalized === target || normalized.endsWith(`.${target}`));
+}
+
+function readSafariCString(buffer: Buffer, start: number, end: number): string | null {
+  if (start < 0 || start >= end) return null;
+  let cursor = start;
+  while (cursor < end && buffer[cursor] !== 0) cursor += 1;
+  if (cursor >= end) return null;
+  return buffer.toString('utf8', start, cursor);
+}
+
+function parseSafariCookieRecord(page: Buffer, offset: number, cookies: TwitterCookies): void {
+  if (offset < 0 || offset + 4 > page.length) return;
+  const recordSize = page.readUInt32LE(offset);
+  const recordEnd = offset + recordSize;
+  if (recordSize <= 0 || recordEnd > page.length) return;
+
+  const headerStart = offset + 4;
+  const headerSize = 4 + 4 + 4 + 4 + 4 + 4 + 4; // unknown1 + flags + unknown2 + domain + name + path + value
+  if (headerStart + headerSize > recordEnd) return;
+
+  const domainOffset = page.readUInt32LE(headerStart + 12);
+  const nameOffset = page.readUInt32LE(headerStart + 16);
+  const valueOffset = page.readUInt32LE(headerStart + 24);
+
+  const domain = readSafariCString(page, offset + domainOffset, recordEnd);
+  const name = readSafariCString(page, offset + nameOffset, recordEnd);
+  const value = readSafariCString(page, offset + valueOffset, recordEnd);
+
+  if (!name || !value || !matchesSafariDomain(domain)) return;
+  if (!SAFARI_COOKIE_NAMES.has(name)) return;
+
+  const normalizedValue = normalizeValue(value);
+  if (!normalizedValue) return;
+
+  if (name === 'auth_token' && !cookies.authToken) {
+    cookies.authToken = normalizedValue;
+  } else if (name === 'ct0' && !cookies.ct0) {
+    cookies.ct0 = normalizedValue;
+  }
+}
+
+function parseSafariCookiePage(page: Buffer, cookies: TwitterCookies): void {
+  if (page.length < 12) return;
+  if (!page.subarray(0, 4).equals(SAFARI_PAGE_SIGNATURE)) return;
+  const cookieCount = page.readUInt32LE(4);
+  if (!cookieCount) return;
+
+  const offsets: number[] = [];
+  let cursor = 8;
+  for (let i = 0; i < cookieCount; i += 1) {
+    if (cursor + 4 > page.length) return;
+    offsets.push(page.readUInt32LE(cursor));
+    cursor += 4;
+  }
+
+  for (const offset of offsets) {
+    parseSafariCookieRecord(page, offset, cookies);
+    if (cookies.authToken && cookies.ct0) return;
+  }
+}
+
+function parseSafariCookies(data: Buffer, cookies: TwitterCookies): void {
+  if (data.length < 8) return;
+  if (data.subarray(0, 4).toString('utf8') !== 'cook') return;
+  const pageCount = data.readUInt32BE(4);
+  let cursor = 8;
+  const pageSizes: number[] = [];
+  for (let i = 0; i < pageCount; i += 1) {
+    if (cursor + 4 > data.length) return;
+    pageSizes.push(data.readUInt32BE(cursor));
+    cursor += 4;
+  }
+
+  for (const pageSize of pageSizes) {
+    if (cursor + pageSize > data.length) return;
+    const page = data.subarray(cursor, cursor + pageSize);
+    parseSafariCookiePage(page, cookies);
+    if (cookies.authToken && cookies.ct0) return;
+    cursor += pageSize;
+  }
+}
+
+/**
+ * Extract Twitter cookies from Safari browser using Cookies.binarycookies
+ */
+export async function extractCookiesFromSafari(): Promise<CookieExtractionResult> {
+  const warnings: string[] = [];
+  const cookies: TwitterCookies = {
+    authToken: null,
+    ct0: null,
+    source: null,
+  };
+
+  const cookiesPath = getSafariCookiesPath();
+  if (!cookiesPath) {
+    warnings.push('Safari cookies database not found.');
+    return { cookies, warnings };
+  }
+
+  let tempDir: string | null = null;
+
+  try {
+    tempDir = mkdtempSync(join(tmpdir(), 'twitter-cli-'));
+    const tempCookiesPath = join(tempDir, 'Cookies.binarycookies');
+    copyFileSync(cookiesPath, tempCookiesPath);
+    const data = readFileSync(tempCookiesPath);
+    parseSafariCookies(data, cookies);
+
+    if (cookies.authToken || cookies.ct0) {
+      cookies.source = 'Safari';
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    warnings.push(`Failed to read Safari cookies: ${message}`);
+  } finally {
+    if (tempDir) {
+      try {
+        rmSync(tempDir, { recursive: true, force: true });
+      } catch {
+        // ignore cleanup errors
+      }
+    }
+  }
+
+  if (!cookies.authToken && !cookies.ct0) {
+    warnings.push('No Twitter cookies found in Safari. Make sure you are logged into x.com in Safari.');
+  }
+
+  return { cookies, warnings };
 }
 
 /**
@@ -287,11 +439,12 @@ export async function extractCookiesFromFirefox(profile?: string): Promise<Cooki
 
 /**
  * Resolve Twitter credentials from multiple sources
- * Priority: CLI args > environment variables > Chrome cookies
+ * Priority: CLI args > environment variables > Safari > Chrome > Firefox
  */
 export async function resolveCredentials(options: {
   authToken?: string;
   ct0?: string;
+  allowSafari?: boolean;
   chromeProfile?: string;
   firefoxProfile?: string;
   allowChrome?: boolean;
@@ -340,21 +493,22 @@ export async function resolveCredentials(options: {
     }
   }
 
-  const allowFirefox = options.allowFirefox ?? true;
+  const allowSafari = options.allowSafari ?? true;
   const allowChrome = options.allowChrome ?? true;
+  const allowFirefox = options.allowFirefox ?? true;
 
-  // 3. Firefox cookies (preferred browser fallback)
-  if (allowFirefox && (!cookies.authToken || !cookies.ct0)) {
-    const firefoxResult = await extractCookiesFromFirefox(options.firefoxProfile);
-    warnings.push(...firefoxResult.warnings);
+  // 3. Safari cookies (preferred browser fallback)
+  if (allowSafari && (!cookies.authToken || !cookies.ct0)) {
+    const safariResult = await extractCookiesFromSafari();
+    warnings.push(...safariResult.warnings);
 
-    if (!cookies.authToken && firefoxResult.cookies.authToken) {
-      cookies.authToken = firefoxResult.cookies.authToken;
-      cookies.source = firefoxResult.cookies.source;
+    if (!cookies.authToken && safariResult.cookies.authToken) {
+      cookies.authToken = safariResult.cookies.authToken;
+      cookies.source = safariResult.cookies.source;
     }
-    if (!cookies.ct0 && firefoxResult.cookies.ct0) {
-      cookies.ct0 = firefoxResult.cookies.ct0;
-      if (!cookies.source) cookies.source = firefoxResult.cookies.source;
+    if (!cookies.ct0 && safariResult.cookies.ct0) {
+      cookies.ct0 = safariResult.cookies.ct0;
+      if (!cookies.source) cookies.source = safariResult.cookies.source;
     }
   }
 
@@ -373,14 +527,29 @@ export async function resolveCredentials(options: {
     }
   }
 
+  // 5. Firefox cookies (tertiary browser fallback)
+  if (allowFirefox && (!cookies.authToken || !cookies.ct0)) {
+    const firefoxResult = await extractCookiesFromFirefox(options.firefoxProfile);
+    warnings.push(...firefoxResult.warnings);
+
+    if (!cookies.authToken && firefoxResult.cookies.authToken) {
+      cookies.authToken = firefoxResult.cookies.authToken;
+      cookies.source = firefoxResult.cookies.source;
+    }
+    if (!cookies.ct0 && firefoxResult.cookies.ct0) {
+      cookies.ct0 = firefoxResult.cookies.ct0;
+      if (!cookies.source) cookies.source = firefoxResult.cookies.source;
+    }
+  }
+
   // Validation
   if (!cookies.authToken) {
     warnings.push(
-      'Missing auth_token - provide via --auth-token, AUTH_TOKEN env var, or login to x.com in Chrome/Firefox',
+      'Missing auth_token - provide via --auth-token, AUTH_TOKEN env var, or login to x.com in Safari/Chrome/Firefox',
     );
   }
   if (!cookies.ct0) {
-    warnings.push('Missing ct0 - provide via --ct0, CT0 env var, or login to x.com in Chrome/Firefox');
+    warnings.push('Missing ct0 - provide via --ct0, CT0 env var, or login to x.com in Safari/Chrome/Firefox');
   }
 
   return { cookies, warnings };

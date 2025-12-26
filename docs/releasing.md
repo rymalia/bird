@@ -53,4 +53,4 @@ If you want a single-file binary for Homebrew/GitHub assets:
 ## Notes
 - Scoped npm name (`@steipete/bird`) requires `--access public` on first publish.
 - Homebrew formula assumes macOS universal binary; adjust URL/name if you ship per-arch.
-- Config defaults (JSON5) and Firefox/Chrome cookie selection are documented in `README.md` — keep that in sync for each release.
+- Config defaults (JSON5) and Safari/Chrome/Firefox cookie selection are documented in `README.md` — keep that in sync for each release.

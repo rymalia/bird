@@ -66,11 +66,12 @@ X endpoints and authenticates via cookies (`auth_token`, `ct0`).
 
 1. CLI flags: `--auth-token`, `--ct0`
 2. Environment variables: `AUTH_TOKEN`, `CT0` (fallback: `TWITTER_AUTH_TOKEN`, `TWITTER_CT0`)
-3. Browser cookies (macOS): Firefox or Chrome profiles
+3. Browser cookies (macOS): Safari, Chrome, Firefox
 
 Browser cookie sources:
-- Firefox (default): `~/Library/Application Support/Firefox/Profiles/<profile>/cookies.sqlite`
+- Safari: `~/Library/Cookies/Cookies.binarycookies` (fallback: `~/Library/Containers/com.apple.Safari/Data/Library/Cookies/Cookies.binarycookies`)
 - Chrome: `~/Library/Application Support/Google/Chrome/<Profile>/Cookies`
+- Firefox: `~/Library/Application Support/Firefox/Profiles/<profile>/cookies.sqlite`
 
 ## Config (JSON5)
 
@@ -84,6 +85,7 @@ Example `~/.config/bird/config.json5`:
 ```json5
 {
   firefoxProfile: "default-release",
+  allowSafari: true,
   allowFirefox: true,
   allowChrome: false,
   timeoutMs: 20000

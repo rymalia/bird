@@ -14,9 +14,77 @@ vi.mock('node:fs', () => {
     copyFileSync: vi.fn(),
     mkdtempSync: vi.fn(() => '/tmp/test-dir'),
     readdirSync: vi.fn(() => []),
+    readFileSync: vi.fn(() => Buffer.alloc(0)),
     rmSync: vi.fn(),
   };
 });
+
+const itIfDarwin = process.platform === 'darwin' ? it : it.skip;
+
+function buildSafariCookieRecord(input: { domain: string; name: string; value: string; path?: string }): Buffer {
+  const domain = Buffer.from(input.domain, 'utf8');
+  const name = Buffer.from(input.name, 'utf8');
+  const path = Buffer.from(input.path ?? '/', 'utf8');
+  const value = Buffer.from(input.value, 'utf8');
+
+  const headerSize = 56;
+  const domainOffset = headerSize;
+  const nameOffset = domainOffset + domain.length + 1;
+  const pathOffset = nameOffset + name.length + 1;
+  const valueOffset = pathOffset + path.length + 1;
+  const recordSize = valueOffset + value.length + 1;
+
+  const record = Buffer.alloc(recordSize);
+  record.writeUInt32LE(recordSize, 0);
+  record.writeUInt32LE(0, 4);
+  record.writeUInt32LE(0, 8);
+  record.writeUInt32LE(0, 12);
+  record.writeUInt32LE(domainOffset, 16);
+  record.writeUInt32LE(nameOffset, 20);
+  record.writeUInt32LE(pathOffset, 24);
+  record.writeUInt32LE(valueOffset, 28);
+
+  domain.copy(record, domainOffset);
+  record[domainOffset + domain.length] = 0;
+  name.copy(record, nameOffset);
+  record[nameOffset + name.length] = 0;
+  path.copy(record, pathOffset);
+  record[pathOffset + path.length] = 0;
+  value.copy(record, valueOffset);
+  record[valueOffset + value.length] = 0;
+
+  return record;
+}
+
+function buildSafariCookiesFile(records: Buffer[]): Buffer {
+  const cookieCount = records.length;
+  const headerSize = 4 + 4 + 4 * cookieCount + 4;
+  const offsets: number[] = [];
+  let cursor = headerSize;
+  for (const record of records) {
+    offsets.push(cursor);
+    cursor += record.length;
+  }
+
+  const pageSize = cursor;
+  const page = Buffer.alloc(pageSize);
+  page.writeUInt32BE(0x00000100, 0);
+  page.writeUInt32LE(cookieCount, 4);
+  offsets.forEach((offset, index) => {
+    page.writeUInt32LE(offset, 8 + index * 4);
+  });
+  page.writeUInt32LE(0, 8 + cookieCount * 4);
+  offsets.forEach((offset, index) => {
+    records[index].copy(page, offset);
+  });
+
+  const header = Buffer.alloc(12);
+  header.write('cook', 0, 'ascii');
+  header.writeUInt32BE(1, 4);
+  header.writeUInt32BE(pageSize, 8);
+
+  return Buffer.concat([header, page]);
+}
 
 describe('cookies', () => {
   const originalEnv = process.env;
@@ -135,10 +203,10 @@ describe('cookies', () => {
       const result = await resolveCredentials({ allowFirefox: false, allowChrome: false });
 
       expect(result.warnings).toContain(
-        'Missing auth_token - provide via --auth-token, AUTH_TOKEN env var, or login to x.com in Chrome/Firefox',
+        'Missing auth_token - provide via --auth-token, AUTH_TOKEN env var, or login to x.com in Safari/Chrome/Firefox',
       );
       expect(result.warnings).toContain(
-        'Missing ct0 - provide via --ct0, CT0 env var, or login to x.com in Chrome/Firefox',
+        'Missing ct0 - provide via --ct0, CT0 env var, or login to x.com in Safari/Chrome/Firefox',
       );
     });
 
@@ -155,11 +223,65 @@ describe('cookies', () => {
       });
 
       const { resolveCredentials } = await import('../src/lib/cookies.js');
-      const result = await resolveCredentials({ allowFirefox: false, allowChrome: true, chromeProfile: 'Default' });
+      const result = await resolveCredentials({
+        allowSafari: false,
+        allowFirefox: false,
+        allowChrome: true,
+        chromeProfile: 'Default',
+      });
 
       expect(result.cookies.authToken).toBe('test_auth');
       expect(result.cookies.ct0).toBe('test_ct0');
       expect(result.cookies.source).toContain('Chrome');
+    });
+  });
+
+  describe('extractCookiesFromSafari', () => {
+    itIfDarwin('returns cookies from Safari binarycookies', async () => {
+      const fs = await import('node:fs');
+      (fs.existsSync as unknown as vi.Mock).mockImplementation((path: string) =>
+        path.toLowerCase().endsWith('cookies.binarycookies'),
+      );
+      (fs.copyFileSync as unknown as vi.Mock).mockImplementation(() => {});
+      (fs.mkdtempSync as unknown as vi.Mock).mockReturnValue('/tmp/test-dir');
+      (fs.readFileSync as unknown as vi.Mock).mockReturnValue(
+        buildSafariCookiesFile([
+          buildSafariCookieRecord({ domain: '.x.com', name: 'auth_token', value: 'safari_auth' }),
+          buildSafariCookieRecord({ domain: '.x.com', name: 'ct0', value: 'safari_ct0' }),
+        ]),
+      );
+
+      const { extractCookiesFromSafari } = await import('../src/lib/cookies.js');
+      const result = await extractCookiesFromSafari();
+
+      expect(result.cookies.authToken).toBe('safari_auth');
+      expect(result.cookies.ct0).toBe('safari_ct0');
+      expect(result.cookies.source).toBe('Safari');
+    });
+
+    itIfDarwin('prefers Safari over Chrome when both are available', async () => {
+      const fs = await import('node:fs');
+
+      (fs.existsSync as unknown as vi.Mock).mockImplementation((path: string) => {
+        const lower = path.toLowerCase();
+        if (lower.endsWith('cookies.binarycookies')) return true;
+        if (lower.includes('chrome') && lower.endsWith('cookies')) return true;
+        return false;
+      });
+      (fs.copyFileSync as unknown as vi.Mock).mockImplementation(() => {});
+      (fs.mkdtempSync as unknown as vi.Mock).mockReturnValue('/tmp/test-dir');
+      (fs.readFileSync as unknown as vi.Mock).mockReturnValue(
+        buildSafariCookiesFile([
+          buildSafariCookieRecord({ domain: '.x.com', name: 'auth_token', value: 'safari_auth' }),
+          buildSafariCookieRecord({ domain: '.x.com', name: 'ct0', value: 'safari_ct0' }),
+        ]),
+      );
+
+      const { resolveCredentials } = await import('../src/lib/cookies.js');
+      const result = await resolveCredentials({ allowSafari: true, allowChrome: true, allowFirefox: false });
+
+      expect(result.cookies.authToken).toBe('safari_auth');
+      expect(result.cookies.ct0).toBe('safari_ct0');
     });
   });
 

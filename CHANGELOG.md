@@ -2,8 +2,12 @@
 
 ## 0.3.0 — Unreleased
 
+### Added
+- Safari cookie extraction (`Cookies.binarycookies`) + `allowSafari` config toggle.
+
 ### Changed
 - Removed the Sweetistics engine + fallback. `bird` is GraphQL-only.
+- Browser cookie fallback order: Safari → Chrome → Firefox.
 
 ## 0.2.0 — 2025-12-26
 

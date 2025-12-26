@@ -70,6 +70,7 @@ const colors = {
 type BirdConfig = {
   chromeProfile?: string;
   firefoxProfile?: string;
+  allowSafari?: boolean;
   allowChrome?: boolean;
   allowFirefox?: boolean;
   timeoutMs?: number;
@@ -322,6 +323,7 @@ program
       ct0: opts.ct0,
       chromeProfile: opts.chromeProfile || config.chromeProfile,
       firefoxProfile: opts.firefoxProfile || config.firefoxProfile,
+      allowSafari: config.allowSafari ?? true,
       allowChrome: config.allowChrome ?? true,
       allowFirefox: config.allowFirefox ?? true,
     });
@@ -388,6 +390,7 @@ program
       ct0: opts.ct0,
       chromeProfile: opts.chromeProfile || config.chromeProfile,
       firefoxProfile: opts.firefoxProfile || config.firefoxProfile,
+      allowSafari: config.allowSafari ?? true,
       allowChrome: config.allowChrome ?? true,
       allowFirefox: config.allowFirefox ?? true,
     });
@@ -450,6 +453,7 @@ program
       ct0: opts.ct0,
       chromeProfile: opts.chromeProfile || config.chromeProfile,
       firefoxProfile: opts.firefoxProfile || config.firefoxProfile,
+      allowSafari: config.allowSafari ?? true,
       allowChrome: config.allowChrome ?? true,
       allowFirefox: config.allowFirefox ?? true,
     });
@@ -499,6 +503,9 @@ program
       ct0: opts.ct0,
       chromeProfile: opts.chromeProfile || config.chromeProfile,
       firefoxProfile: opts.firefoxProfile || config.firefoxProfile,
+      allowSafari: config.allowSafari ?? true,
+      allowChrome: config.allowChrome ?? true,
+      allowFirefox: config.allowFirefox ?? true,
     });
 
     for (const warning of warnings) {
@@ -537,6 +544,9 @@ program
       ct0: opts.ct0,
       chromeProfile: opts.chromeProfile || config.chromeProfile,
       firefoxProfile: opts.firefoxProfile || config.firefoxProfile,
+      allowSafari: config.allowSafari ?? true,
+      allowChrome: config.allowChrome ?? true,
+      allowFirefox: config.allowFirefox ?? true,
     });
 
     for (const warning of warnings) {
@@ -576,6 +586,9 @@ program
       ct0: opts.ct0,
       chromeProfile: opts.chromeProfile || config.chromeProfile,
       firefoxProfile: opts.firefoxProfile || config.firefoxProfile,
+      allowSafari: config.allowSafari ?? true,
+      allowChrome: config.allowChrome ?? true,
+      allowFirefox: config.allowFirefox ?? true,
     });
 
     for (const warning of warnings) {
@@ -623,6 +636,7 @@ program
       ct0: opts.ct0,
       chromeProfile: opts.chromeProfile || config.chromeProfile,
       firefoxProfile: opts.firefoxProfile || config.firefoxProfile,
+      allowSafari: config.allowSafari ?? true,
       allowChrome: config.allowChrome ?? true,
       allowFirefox: config.allowFirefox ?? true,
     });
@@ -674,6 +688,7 @@ program
       ct0: opts.ct0,
       chromeProfile: opts.chromeProfile || config.chromeProfile,
       firefoxProfile: opts.firefoxProfile || config.firefoxProfile,
+      allowSafari: config.allowSafari ?? true,
       allowChrome: config.allowChrome ?? true,
       allowFirefox: config.allowFirefox ?? true,
     });
@@ -718,6 +733,7 @@ program
       ct0: opts.ct0,
       chromeProfile: opts.chromeProfile || config.chromeProfile,
       firefoxProfile: opts.firefoxProfile || config.firefoxProfile,
+      allowSafari: config.allowSafari ?? true,
       allowChrome: config.allowChrome ?? true,
       allowFirefox: config.allowFirefox ?? true,
     });
@@ -752,7 +768,7 @@ program
       console.log(`\n${p('ok')}Ready to tweet!`);
     } else {
       console.log(`\n${p('err')}Missing credentials. Options:`);
-      console.log('   1. Login to x.com in Chrome');
+      console.log('   1. Login to x.com in Safari/Chrome/Firefox');
       console.log('   2. Set AUTH_TOKEN and CT0 environment variables');
       console.log('   3. Use --auth-token and --ct0 flags');
       process.exit(1);

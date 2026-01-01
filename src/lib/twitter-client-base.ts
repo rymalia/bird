@@ -4,8 +4,13 @@ import { type OperationName, QUERY_IDS, TARGET_QUERY_ID_OPERATIONS } from './twi
 import type { CurrentUserResult, TwitterClientOptions } from './twitter-client-types.js';
 import { normalizeQuoteDepth } from './twitter-client-utils.js';
 
-export type Constructor<T = object> = new (...args: unknown[]) => T;
-export type AbstractConstructor<T = object> = abstract new (...args: unknown[]) => T;
+// biome-ignore lint/suspicious/noExplicitAny: TS mixin base constructor requirement.
+export type Constructor<T = object> = new (...args: any[]) => T;
+// biome-ignore lint/suspicious/noExplicitAny: TS mixin base constructor requirement.
+export type AbstractConstructor<T = object> = abstract new (...args: any[]) => T;
+export type Mixin<TBase extends AbstractConstructor<TwitterClientBase>, TAdded> = abstract new (
+  ...args: ConstructorParameters<TBase>
+) => TwitterClientBase & TAdded;
 
 export abstract class TwitterClientBase {
   protected authToken: string;

@@ -1,10 +1,22 @@
-import type { AbstractConstructor, TwitterClientBase } from './twitter-client-base.js';
+import type { AbstractConstructor, Mixin, TwitterClientBase } from './twitter-client-base.js';
 import { TWITTER_API_BASE, TWITTER_GRAPHQL_POST_URL, TWITTER_STATUS_UPDATE_URL } from './twitter-client-constants.js';
 import { buildTweetCreateFeatures } from './twitter-client-features.js';
 import type { CreateTweetResponse, TweetResult } from './twitter-client-types.js';
 
-export function withPosting<TBase extends AbstractConstructor<TwitterClientBase>>(Base: TBase) {
-  return class extends Base {
+export interface TwitterClientPostingMethods {
+  tweet(text: string, mediaIds?: string[]): Promise<TweetResult>;
+  reply(text: string, replyToTweetId: string, mediaIds?: string[]): Promise<TweetResult>;
+}
+
+export function withPosting<TBase extends AbstractConstructor<TwitterClientBase>>(
+  Base: TBase,
+): Mixin<TBase, TwitterClientPostingMethods> {
+  abstract class TwitterClientPosting extends Base {
+    // biome-ignore lint/complexity/noUselessConstructor lint/suspicious/noExplicitAny: TS mixin constructor requirement.
+    constructor(...args: any[]) {
+      super(...args);
+    }
+
     /**
      * Post a new tweet
      */
@@ -269,5 +281,7 @@ export function withPosting<TBase extends AbstractConstructor<TwitterClientBase>
         error: `${this.formatErrors(errors)} | fallback: ${fallback.error ?? 'Unknown error'}`,
       };
     }
-  };
+  }
+
+  return TwitterClientPosting;
 }

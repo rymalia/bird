@@ -1,11 +1,24 @@
-import type { AbstractConstructor, TwitterClientBase } from './twitter-client-base.js';
+import type { AbstractConstructor, Mixin, TwitterClientBase } from './twitter-client-base.js';
 import { TWITTER_API_BASE } from './twitter-client-constants.js';
 import { buildBookmarksFeatures, buildLikesFeatures } from './twitter-client-features.js';
-import type { SearchResult } from './twitter-client-types.js';
+import type { GraphqlTweetResult, SearchResult } from './twitter-client-types.js';
 import { parseTweetsFromInstructions } from './twitter-client-utils.js';
 
-export function withTimelines<TBase extends AbstractConstructor<TwitterClientBase>>(Base: TBase) {
-  return class extends Base {
+export interface TwitterClientTimelineMethods {
+  getBookmarks(count?: number): Promise<SearchResult>;
+  getLikes(count?: number): Promise<SearchResult>;
+  getBookmarkFolderTimeline(folderId: string, count?: number): Promise<SearchResult>;
+}
+
+export function withTimelines<TBase extends AbstractConstructor<TwitterClientBase>>(
+  Base: TBase,
+): Mixin<TBase, TwitterClientTimelineMethods> {
+  abstract class TwitterClientTimelines extends Base {
+    // biome-ignore lint/complexity/noUselessConstructor lint/suspicious/noExplicitAny: TS mixin constructor requirement.
+    constructor(...args: any[]) {
+      super(...args);
+    }
+
     private async getBookmarksQueryIds(): Promise<string[]> {
       const primary = await this.getQueryId('Bookmarks');
       return Array.from(new Set([primary, 'RV1g3b8n_SGOHwkqKYSCFw', 'tmd4ifV8RHltzn8ymGg1aw']));
@@ -74,7 +87,7 @@ export function withTimelines<TBase extends AbstractConstructor<TwitterClientBas
                         content?: {
                           itemContent?: {
                             tweet_results?: {
-                              result?: unknown;
+                              result?: GraphqlTweetResult;
                             };
                           };
                         };
@@ -180,7 +193,7 @@ export function withTimelines<TBase extends AbstractConstructor<TwitterClientBas
                             content?: {
                               itemContent?: {
                                 tweet_results?: {
-                                  result?: unknown;
+                                  result?: GraphqlTweetResult;
                                 };
                               };
                             };
@@ -283,7 +296,7 @@ export function withTimelines<TBase extends AbstractConstructor<TwitterClientBas
                         content?: {
                           itemContent?: {
                             tweet_results?: {
-                              result?: unknown;
+                              result?: GraphqlTweetResult;
                             };
                           };
                         };
@@ -333,5 +346,7 @@ export function withTimelines<TBase extends AbstractConstructor<TwitterClientBas
 
       return { success: false, error: firstAttempt.error };
     }
-  };
+  }
+
+  return TwitterClientTimelines;
 }

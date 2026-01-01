@@ -1,11 +1,22 @@
-import type { AbstractConstructor, TwitterClientBase } from './twitter-client-base.js';
+import type { AbstractConstructor, Mixin, TwitterClientBase } from './twitter-client-base.js';
 import { TWITTER_API_BASE } from './twitter-client-constants.js';
 import { buildSearchFeatures } from './twitter-client-features.js';
 import type { SearchResult, TweetData } from './twitter-client-types.js';
 import { extractCursorFromInstructions, parseTweetsFromInstructions } from './twitter-client-utils.js';
 
-export function withSearch<TBase extends AbstractConstructor<TwitterClientBase>>(Base: TBase) {
-  return class extends Base {
+export interface TwitterClientSearchMethods {
+  search(query: string, count?: number): Promise<SearchResult>;
+}
+
+export function withSearch<TBase extends AbstractConstructor<TwitterClientBase>>(
+  Base: TBase,
+): Mixin<TBase, TwitterClientSearchMethods> {
+  abstract class TwitterClientSearch extends Base {
+    // biome-ignore lint/complexity/noUselessConstructor lint/suspicious/noExplicitAny: TS mixin constructor requirement.
+    constructor(...args: any[]) {
+      super(...args);
+    }
+
     /**
      * Search for tweets matching a query
      */
@@ -156,5 +167,7 @@ export function withSearch<TBase extends AbstractConstructor<TwitterClientBase>>
 
       return { success: true, tweets };
     }
-  };
+  }
+
+  return TwitterClientSearch;
 }

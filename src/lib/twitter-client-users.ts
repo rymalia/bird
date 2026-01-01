@@ -1,4 +1,4 @@
-import type { AbstractConstructor, TwitterClientBase } from './twitter-client-base.js';
+import type { AbstractConstructor, Mixin, TwitterClientBase } from './twitter-client-base.js';
 import {
   SETTINGS_NAME_REGEX,
   SETTINGS_SCREEN_NAME_REGEX,
@@ -9,8 +9,21 @@ import { buildFollowingFeatures } from './twitter-client-features.js';
 import type { CurrentUserResult, FollowingResult } from './twitter-client-types.js';
 import { parseUsersFromInstructions } from './twitter-client-utils.js';
 
-export function withUsers<TBase extends AbstractConstructor<TwitterClientBase>>(Base: TBase) {
-  return class extends Base {
+export interface TwitterClientUserMethods {
+  getCurrentUser(): Promise<CurrentUserResult>;
+  getFollowing(userId: string, count?: number): Promise<FollowingResult>;
+  getFollowers(userId: string, count?: number): Promise<FollowingResult>;
+}
+
+export function withUsers<TBase extends AbstractConstructor<TwitterClientBase>>(
+  Base: TBase,
+): Mixin<TBase, TwitterClientUserMethods> {
+  abstract class TwitterClientUsers extends Base {
+    // biome-ignore lint/complexity/noUselessConstructor lint/suspicious/noExplicitAny: TS mixin constructor requirement.
+    constructor(...args: any[]) {
+      super(...args);
+    }
+
     private async getFollowingQueryIds(): Promise<string[]> {
       const primary = await this.getQueryId('Following');
       return Array.from(new Set([primary, 'BEkNpEt5pNETESoqMsTEGA']));
@@ -326,5 +339,7 @@ export function withUsers<TBase extends AbstractConstructor<TwitterClientBase>>(
 
       return { success: false, error: firstAttempt.error };
     }
-  };
+  }
+
+  return TwitterClientUsers;
 }

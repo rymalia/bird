@@ -1,9 +1,20 @@
-import type { AbstractConstructor, TwitterClientBase } from './twitter-client-base.js';
+import type { AbstractConstructor, Mixin, TwitterClientBase } from './twitter-client-base.js';
 import { TWITTER_MEDIA_METADATA_URL, TWITTER_UPLOAD_URL } from './twitter-client-constants.js';
 import type { UploadMediaResult } from './twitter-client-types.js';
 
-export function withMedia<TBase extends AbstractConstructor<TwitterClientBase>>(Base: TBase) {
-  return class extends Base {
+export interface TwitterClientMediaMethods {
+  uploadMedia(input: { data: Uint8Array; mimeType: string; alt?: string }): Promise<UploadMediaResult>;
+}
+
+export function withMedia<TBase extends AbstractConstructor<TwitterClientBase>>(
+  Base: TBase,
+): Mixin<TBase, TwitterClientMediaMethods> {
+  abstract class TwitterClientMedia extends Base {
+    // biome-ignore lint/complexity/noUselessConstructor lint/suspicious/noExplicitAny: TS mixin constructor requirement.
+    constructor(...args: any[]) {
+      super(...args);
+    }
+
     private mediaCategoryForMime(mimeType: string): string | null {
       if (mimeType.startsWith('image/')) {
         if (mimeType === 'image/gif') {
@@ -162,5 +173,7 @@ export function withMedia<TBase extends AbstractConstructor<TwitterClientBase>>(
         return { success: false, error: error instanceof Error ? error.message : String(error) };
       }
     }
-  };
+  }
+
+  return TwitterClientMedia;
 }

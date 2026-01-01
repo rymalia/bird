@@ -1,4 +1,4 @@
-import type { AbstractConstructor, TwitterClientBase } from './twitter-client-base.js';
+import type { AbstractConstructor, Mixin, TwitterClientBase } from './twitter-client-base.js';
 import { TWITTER_API_BASE } from './twitter-client-constants.js';
 import { buildArticleFeatures, buildArticleFieldToggles, buildTweetDetailFeatures } from './twitter-client-features.js';
 import type { GetTweetResult, GraphqlTweetResult, SearchResult } from './twitter-client-types.js';
@@ -10,8 +10,21 @@ import {
   parseTweetsFromInstructions,
 } from './twitter-client-utils.js';
 
-export function withTweetDetails<TBase extends AbstractConstructor<TwitterClientBase>>(Base: TBase) {
-  return class extends Base {
+export interface TwitterClientTweetDetailMethods {
+  getTweet(tweetId: string): Promise<GetTweetResult>;
+  getReplies(tweetId: string): Promise<SearchResult>;
+  getThread(tweetId: string): Promise<SearchResult>;
+}
+
+export function withTweetDetails<TBase extends AbstractConstructor<TwitterClientBase>>(
+  Base: TBase,
+): Mixin<TBase, TwitterClientTweetDetailMethods> {
+  abstract class TwitterClientTweetDetails extends Base {
+    // biome-ignore lint/complexity/noUselessConstructor lint/suspicious/noExplicitAny: TS mixin constructor requirement.
+    constructor(...args: any[]) {
+      super(...args);
+    }
+
     private async fetchUserArticlePlainText(
       userId: string,
       tweetId: string,
@@ -318,5 +331,7 @@ export function withTweetDetails<TBase extends AbstractConstructor<TwitterClient
 
       return { success: true, tweets: thread };
     }
-  };
+  }
+
+  return TwitterClientTweetDetails;
 }

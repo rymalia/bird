@@ -67,6 +67,18 @@ bird followers --user 12345678 -n 10  # by user ID
 bird query-ids --fresh
 ```
 
+## Library
+
+`bird` can be used as a library (same GraphQL client as the CLI):
+
+```ts
+import { TwitterClient, resolveCredentials } from '@steipete/bird';
+
+const { cookies } = await resolveCredentials({ cookieSource: 'safari' });
+const client = new TwitterClient({ cookies });
+const result = await client.search('from:steipete', 50);
+```
+
 ## Commands
 
 - `bird tweet "<text>"` — post a new tweet.

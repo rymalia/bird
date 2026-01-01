@@ -14,6 +14,7 @@
 - `following`/`followers` JSON user fields are now camelCase (`followersCount`, `followingCount`, `isBlueVerified`, `profileImageUrl`, `createdAt`).
 - Cookie extraction timeout is now configurable (default 30s on macOS) via `--cookie-timeout` / `BIRD_COOKIE_TIMEOUT_MS` (thanks @tylerseymour).
 - Search now paginates beyond 20 results when using `-n` (thanks @ryanh-ai).
+- Library exports are now separated from the CLI entrypoint for easier embedding.
 ## 0.4.1 — 2025-12-31
 
 ### Added

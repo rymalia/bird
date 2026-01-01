@@ -1345,10 +1345,7 @@ describe('TwitterClient', () => {
                   timeline: {
                     instructions: [
                       {
-                        entries: [
-                          makeSearchEntry('1'),
-                          { content: { cursorType: 'Bottom', value: 'cursor-1' } },
-                        ],
+                        entries: [makeSearchEntry('1'), { content: { cursorType: 'Bottom', value: 'cursor-1' } }],
                       },
                     ],
                   },

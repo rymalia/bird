@@ -4,8 +4,9 @@
   "description": "CLI tool for tweeting and replying via Twitter/X GraphQL API",
   "type": "module",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "bin": {
-    "bird": "dist/index.js"
+    "bird": "dist/cli.js"
   },
   "files": [
     "dist",
@@ -16,7 +17,7 @@
   "scripts": {
     "build": "pnpm run build:dist && pnpm run build:binary",
     "build:dist": "tsc && node scripts/copy-dist-assets.js",
-    "build:binary": "BIRD_VERSION=$(node -p \"require('./package.json').version\") BIRD_GIT_SHA=$(git rev-parse --short=8 HEAD 2>/dev/null || true) bun build --compile --minify --env=BIRD_* src/index.ts --outfile bird",
+    "build:binary": "BIRD_VERSION=$(node -p \"require('./package.json').version\") BIRD_GIT_SHA=$(git rev-parse --short=8 HEAD 2>/dev/null || true) bun build --compile --minify --env=BIRD_* src/cli.ts --outfile bird",
     "dev": "tsx src/index.ts",
     "bird": "pnpm run build:dist && node dist/index.js",
     "test": "vitest run",

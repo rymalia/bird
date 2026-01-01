@@ -2,6 +2,12 @@
 
 ## 0.4.2 — Unreleased
 
+### Added
+- `following`/`followers` commands to list users (thanks @lockmeister).
+
+### Changed
+- Query ID updater now tracks Following/Followers GraphQL operations.
+
 ## 0.4.1 — 2025-12-31
 
 ### Added

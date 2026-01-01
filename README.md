@@ -50,6 +50,10 @@ bird mentions --user @steipete -n 5
 
 # Bookmarks
 bird bookmarks -n 5
+bird bookmarks --folder-id 123456789123456789 -n 5 # https://x.com/i/bookmarks/<folder-id>
+
+# Likes
+bird likes -n 5
 
 # Following (who you follow)
 bird following -n 20
@@ -75,7 +79,8 @@ bird query-ids --fresh
 - `bird thread <tweet-id-or-url> [--json]` — show the full conversation thread.
 - `bird search "<query>" [-n count] [--json]` — search for tweets matching a query.
 - `bird mentions [-n count] [--user @handle] [--json]` — find tweets mentioning a user (defaults to the authenticated user).
-- `bird bookmarks [-n count] [--json]` — list your bookmarked tweets.
+- `bird bookmarks [-n count] [--folder-id id] [--json]` — list your bookmarked tweets (or a specific bookmark folder).
+- `bird likes [-n count] [--json]` — list your liked tweets.
 - `bird following [--user <userId>] [-n count] [--json]` — list users that you (or another user) follow.
 - `bird followers [--user <userId>] [-n count] [--json]` — list users that follow you (or another user).
 - `bird whoami` — print which Twitter account your cookies belong to.
@@ -83,6 +88,7 @@ bird query-ids --fresh
 
 Global options:
 - `--timeout <ms>`: abort requests after the given timeout (milliseconds).
+- `--quote-depth <n>`: max quoted tweet depth in JSON output (default: 1; 0 disables).
 - `--plain`: stable output (no emoji, no color).
 - `--no-emoji`: disable emoji output.
 - `--no-color`: disable ANSI colors (or set `NO_COLOR=1`).
@@ -122,18 +128,38 @@ Example `~/.config/bird/config.json5`:
   // Cookie source order for browser extraction (string or array)
   cookieSource: ["firefox", "safari"],
   firefoxProfile: "default-release",
-  timeoutMs: 20000
+  timeoutMs: 20000,
+  quoteDepth: 1
 }
 ```
 
 Environment shortcuts:
 - `BIRD_TIMEOUT_MS`
+- `BIRD_QUOTE_DEPTH`
 
 ## Output
 
 - `--json` prints raw tweet objects for read/replies/thread/search/mentions/bookmarks.
 - `read` returns full text for Notes and Articles when present.
 - Use `--plain` for stable, script-friendly output (no emoji, no color).
+
+### JSON Schema
+
+When using `--json`, tweet objects include:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Tweet ID |
+| `text` | string | Full tweet text (includes Note/Article content when present) |
+| `author` | object | `{ username, name }` |
+| `authorId` | string? | Author's user ID |
+| `createdAt` | string | Timestamp |
+| `replyCount` | number | Number of replies |
+| `retweetCount` | number | Number of retweets |
+| `likeCount` | number | Number of likes |
+| `conversationId` | string | Thread conversation ID |
+| `inReplyToStatusId` | string? | Parent tweet ID (present if this is a reply) |
+| `quotedTweet` | object? | Embedded quote tweet (same schema; depth controlled by `--quote-depth`) |
 
 ## Query IDs (GraphQL)
 

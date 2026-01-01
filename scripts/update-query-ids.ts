@@ -16,6 +16,7 @@ const TARGET_OPERATIONS = [
   'Bookmarks',
   'Following',
   'Followers',
+  'Likes',
 ] as const;
 
 type OperationName = (typeof TARGET_OPERATIONS)[number];

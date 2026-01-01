@@ -30,6 +30,8 @@ const FALLBACK_QUERY_IDS = {
   Bookmarks: 'RV1g3b8n_SGOHwkqKYSCFw',
   Following: 'BEkNpEt5pNETESoqMsTEGA',
   Followers: 'kuFUYP9eV1FPoEy4N-pi7w',
+  Likes: 'JR2gceKucIKcVNB_9JkhsA',
+  BookmarkFolderTimeline: 'KJIQpsvxrTfRIlbaRIySHQ',
 } as const;
 
 type OperationName = keyof typeof FALLBACK_QUERY_IDS;
@@ -41,7 +43,18 @@ const QUERY_IDS: Record<OperationName, string> = {
 
 const TARGET_QUERY_ID_OPERATIONS = Object.keys(FALLBACK_QUERY_IDS) as Array<OperationName>;
 
+function normalizeQuoteDepth(value?: number): number {
+  if (value === undefined || value === null) {
+    return 1;
+  }
+  if (!Number.isFinite(value)) {
+    return 1;
+  }
+  return Math.max(0, Math.floor(value));
+}
+
 type GraphqlTweetResult = {
+  __typename?: string;
   rest_id?: string;
   legacy?: {
     full_text?: string;
@@ -186,6 +199,10 @@ type GraphqlTweetResult = {
       }>;
     }>;
   };
+  tweet?: GraphqlTweetResult;
+  quoted_status_result?: {
+    result?: GraphqlTweetResult;
+  };
 };
 
 export type TweetResult =
@@ -218,6 +235,8 @@ export interface TweetData {
   likeCount?: number;
   conversationId?: string;
   inReplyToStatusId?: string;
+  // Optional quoted tweet; depth controlled by quoteDepth (default: 1).
+  quotedTweet?: TweetData;
 }
 
 export interface GetTweetResult {
@@ -264,6 +283,8 @@ export interface TwitterClientOptions {
   cookies: TwitterCookies;
   userAgent?: string;
   timeoutMs?: number;
+  // Max depth for quoted tweets (0 disables). Defaults to 1.
+  quoteDepth?: number;
 }
 
 interface CreateTweetResponse {
@@ -288,6 +309,7 @@ export class TwitterClient {
   private cookieHeader: string;
   private userAgent: string;
   private timeoutMs?: number;
+  private quoteDepth: number;
   private clientUuid: string;
   private clientDeviceId: string;
   private clientUserId?: string;
@@ -303,6 +325,7 @@ export class TwitterClient {
       options.userAgent ||
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
     this.timeoutMs = options.timeoutMs;
+    this.quoteDepth = normalizeQuoteDepth(options.quoteDepth);
     this.clientUuid = randomUUID();
     this.clientDeviceId = randomUUID();
   }
@@ -729,7 +752,17 @@ export class TwitterClient {
     );
   }
 
-  private mapTweetResult(result: GraphqlTweetResult | undefined): TweetData | undefined {
+  private unwrapTweetResult(result: GraphqlTweetResult | undefined): GraphqlTweetResult | undefined {
+    if (!result) {
+      return undefined;
+    }
+    if (result.tweet) {
+      return result.tweet;
+    }
+    return result;
+  }
+
+  private mapTweetResult(result: GraphqlTweetResult | undefined, quoteDepth = this.quoteDepth): TweetData | undefined {
     const userResult = result?.core?.user_results?.result;
     const userLegacy = userResult?.legacy;
     const userCore = userResult?.core;
@@ -743,6 +776,14 @@ export class TwitterClient {
     const text = this.extractTweetText(result);
     if (!text) {
       return undefined;
+    }
+
+    let quotedTweet: TweetData | undefined;
+    if (quoteDepth > 0) {
+      const quotedResult = this.unwrapTweetResult(result.quoted_status_result?.result);
+      if (quotedResult) {
+        quotedTweet = this.mapTweetResult(quotedResult, quoteDepth - 1);
+      }
     }
 
     return {
@@ -759,6 +800,7 @@ export class TwitterClient {
         name: name || username,
       },
       authorId: userId,
+      quotedTweet,
     };
   }
 
@@ -1890,10 +1932,10 @@ export class TwitterClient {
     return { success: true, tweets: thread };
   }
 
-  private buildBookmarksFeatures(): Record<string, boolean> {
+  // Shared timeline features for likes/bookmarks-style timelines.
+  private buildTimelineFeatures(): Record<string, boolean> {
     return {
       ...this.buildSearchFeatures(),
-      graphql_timeline_v2_bookmark_timeline: true,
       blue_business_profile_image_shape_enabled: true,
       responsive_web_text_conversations_enabled: false,
       tweetypie_unmention_optimization_enabled: true,
@@ -1905,9 +1947,25 @@ export class TwitterClient {
     };
   }
 
+  private buildBookmarksFeatures(): Record<string, boolean> {
+    return {
+      ...this.buildTimelineFeatures(),
+      graphql_timeline_v2_bookmark_timeline: true,
+    };
+  }
+
+  private buildLikesFeatures(): Record<string, boolean> {
+    return this.buildTimelineFeatures();
+  }
+
   private async getBookmarksQueryIds(): Promise<string[]> {
     const primary = await this.getQueryId('Bookmarks');
     return Array.from(new Set([primary, 'RV1g3b8n_SGOHwkqKYSCFw', 'tmd4ifV8RHltzn8ymGg1aw']));
+  }
+
+  private async getBookmarkFolderQueryIds(): Promise<string[]> {
+    const primary = await this.getQueryId('BookmarkFolderTimeline');
+    return Array.from(new Set([primary, 'KJIQpsvxrTfRIlbaRIySHQ']));
   }
 
   /**
@@ -2305,6 +2363,225 @@ export class TwitterClient {
       const secondAttempt = await tryOnce();
       if (secondAttempt.success) {
         return { success: true, users: secondAttempt.users };
+      }
+      return { success: false, error: secondAttempt.error };
+    }
+
+    return { success: false, error: firstAttempt.error };
+  }
+  private async getLikesQueryIds(): Promise<string[]> {
+    const primary = await this.getQueryId('Likes');
+    return Array.from(new Set([primary, 'JR2gceKucIKcVNB_9JkhsA']));
+  }
+
+  /**
+   * Get the authenticated user's liked tweets
+   */
+  async getLikes(count = 20): Promise<SearchResult> {
+    const userResult = await this.getCurrentUser();
+    if (!userResult.success || !userResult.user) {
+      return { success: false, error: userResult.error ?? 'Could not determine current user' };
+    }
+
+    const variables = {
+      userId: userResult.user.id,
+      count,
+      includePromotedContent: false,
+      withClientEventToken: false,
+      withBirdwatchNotes: false,
+      withVoice: true,
+    };
+
+    const features = this.buildLikesFeatures();
+
+    const params = new URLSearchParams({
+      variables: JSON.stringify(variables),
+      features: JSON.stringify(features),
+    });
+
+    const tryOnce = async () => {
+      let lastError: string | undefined;
+      let had404 = false;
+      const queryIds = await this.getLikesQueryIds();
+
+      for (const queryId of queryIds) {
+        const url = `${TWITTER_API_BASE}/${queryId}/Likes?${params.toString()}`;
+
+        try {
+          const response = await this.fetchWithTimeout(url, {
+            method: 'GET',
+            headers: this.getHeaders(),
+          });
+
+          if (response.status === 404) {
+            had404 = true;
+            lastError = `HTTP ${response.status}`;
+            continue;
+          }
+
+          if (!response.ok) {
+            const text = await response.text();
+            return { success: false as const, error: `HTTP ${response.status}: ${text.slice(0, 200)}`, had404 };
+          }
+
+          const data = (await response.json()) as {
+            data?: {
+              user?: {
+                result?: {
+                  timeline?: {
+                    timeline?: {
+                      instructions?: Array<{
+                        entries?: Array<{
+                          content?: {
+                            itemContent?: {
+                              tweet_results?: {
+                                result?: GraphqlTweetResult;
+                              };
+                            };
+                          };
+                        }>;
+                      }>;
+                    };
+                  };
+                };
+              };
+            };
+            errors?: Array<{ message: string }>;
+          };
+
+          if (data.errors && data.errors.length > 0) {
+            return { success: false as const, error: data.errors.map((e) => e.message).join(', '), had404 };
+          }
+
+          const instructions = data.data?.user?.result?.timeline?.timeline?.instructions;
+          const tweets = this.parseTweetsFromInstructions(instructions);
+
+          return { success: true as const, tweets, had404 };
+        } catch (error) {
+          lastError = error instanceof Error ? error.message : String(error);
+        }
+      }
+
+      return { success: false as const, error: lastError ?? 'Unknown error fetching likes', had404 };
+    };
+
+    const firstAttempt = await tryOnce();
+    if (firstAttempt.success) {
+      return { success: true, tweets: firstAttempt.tweets };
+    }
+
+    if (firstAttempt.had404) {
+      await this.refreshQueryIds();
+      const secondAttempt = await tryOnce();
+      if (secondAttempt.success) {
+        return { success: true, tweets: secondAttempt.tweets };
+      }
+      return { success: false, error: secondAttempt.error };
+    }
+
+    return { success: false, error: firstAttempt.error };
+  }
+
+  /**
+   * Get the authenticated user's bookmark folder timeline
+   */
+  async getBookmarkFolderTimeline(folderId: string, count = 20): Promise<SearchResult> {
+    const variablesWithCount = {
+      bookmark_collection_id: folderId,
+      includePromotedContent: true,
+      count,
+    };
+
+    const variablesWithoutCount = {
+      bookmark_collection_id: folderId,
+      includePromotedContent: true,
+    };
+
+    const features = this.buildBookmarksFeatures();
+
+    const tryOnce = async (variables: Record<string, unknown>) => {
+      let lastError: string | undefined;
+      let had404 = false;
+      const queryIds = await this.getBookmarkFolderQueryIds();
+
+      const params = new URLSearchParams({
+        variables: JSON.stringify(variables),
+        features: JSON.stringify(features),
+      });
+
+      for (const queryId of queryIds) {
+        const url = `${TWITTER_API_BASE}/${queryId}/BookmarkFolderTimeline?${params.toString()}`;
+
+        try {
+          const response = await this.fetchWithTimeout(url, {
+            method: 'GET',
+            headers: this.getHeaders(),
+          });
+
+          if (response.status === 404) {
+            had404 = true;
+            lastError = `HTTP ${response.status}`;
+            continue;
+          }
+
+          if (!response.ok) {
+            const text = await response.text();
+            return { success: false as const, error: `HTTP ${response.status}: ${text.slice(0, 200)}`, had404 };
+          }
+
+          const data = (await response.json()) as {
+            data?: {
+              bookmark_collection_timeline?: {
+                timeline?: {
+                  instructions?: Array<{
+                    entries?: Array<{
+                      content?: {
+                        itemContent?: {
+                          tweet_results?: {
+                            result?: GraphqlTweetResult;
+                          };
+                        };
+                      };
+                    }>;
+                  }>;
+                };
+              };
+            };
+            errors?: Array<{ message: string }>;
+          };
+
+          if (data.errors && data.errors.length > 0) {
+            return { success: false as const, error: data.errors.map((e) => e.message).join(', '), had404 };
+          }
+
+          const instructions = data.data?.bookmark_collection_timeline?.timeline?.instructions;
+          const tweets = this.parseTweetsFromInstructions(instructions);
+
+          return { success: true as const, tweets, had404 };
+        } catch (error) {
+          lastError = error instanceof Error ? error.message : String(error);
+        }
+      }
+
+      return { success: false as const, error: lastError ?? 'Unknown error fetching bookmark folder', had404 };
+    };
+
+    let firstAttempt = await tryOnce(variablesWithCount);
+    if (!firstAttempt.success && firstAttempt.error?.includes('Variable "$count"')) {
+      firstAttempt = await tryOnce(variablesWithoutCount);
+    }
+    if (firstAttempt.success) {
+      return { success: true, tweets: firstAttempt.tweets };
+    }
+
+    if (firstAttempt.had404) {
+      await this.refreshQueryIds();
+      let secondAttempt = await tryOnce(variablesWithCount);
+      if (!secondAttempt.success && secondAttempt.error?.includes('Variable "$count"')) {
+        secondAttempt = await tryOnce(variablesWithoutCount);
+      }
+      if (secondAttempt.success) {
+        return { success: true, tweets: secondAttempt.tweets };
       }
       return { success: false, error: secondAttempt.error };
     }

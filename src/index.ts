@@ -17,6 +17,7 @@ import JSON5 from 'json5';
 import kleur from 'kleur';
 import { resolveCliInvocation } from './lib/cli-args.js';
 import { type CookieSource, resolveCredentials } from './lib/cookies.js';
+import { extractBookmarkFolderId } from './lib/extract-bookmark-folder-id.js';
 import { extractTweetId } from './lib/extract-tweet-id.js';
 import { mentionsQueryFromUserOption, normalizeHandle } from './lib/normalize-handle.js';
 import {
@@ -108,6 +109,7 @@ type BirdConfig = {
   firefoxProfile?: string;
   cookieSource?: CookieSource | CookieSource[];
   timeoutMs?: number;
+  quoteDepth?: number;
 };
 
 function readConfigFile(path: string): Partial<BirdConfig> {
@@ -152,6 +154,7 @@ const KNOWN_COMMANDS = new Set([
   'bookmarks',
   'following',
   'followers',
+  'likes',
   'help',
   'whoami',
   'check',
@@ -193,6 +196,7 @@ program
   .option('--media <path>', 'Attach media file (repeatable, up to 4 images or 1 video)', collect, [])
   .option('--alt <text>', 'Alt text for the corresponding --media (repeatable)', collect, [])
   .option('--timeout <ms>', 'Request timeout in milliseconds')
+  .option('--quote-depth <depth>', 'Max quoted tweet depth (default: 1; 0 disables)')
   .option('--plain', 'Plain output (stable, no emoji, no color)')
   .option('--no-emoji', 'Disable emoji output')
   .option('--no-color', 'Disable ANSI colors (or set NO_COLOR)');
@@ -239,6 +243,23 @@ function resolveTimeoutMs(...values: Array<string | number | undefined | null>):
 
 function resolveTimeoutFromOptions(options: { timeout?: string | number }): number | undefined {
   return resolveTimeoutMs(options.timeout, config.timeoutMs, process.env.BIRD_TIMEOUT_MS);
+}
+
+function resolveQuoteDepth(...values: Array<string | number | undefined | null>): number | undefined {
+  for (const value of values) {
+    if (value === undefined || value === null || value === '') {
+      continue;
+    }
+    const parsed = typeof value === 'number' ? value : Number.parseInt(value, 10);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return Math.floor(parsed);
+    }
+  }
+  return undefined;
+}
+
+function resolveQuoteDepthFromOptions(options: { quoteDepth?: string | number }): number | undefined {
+  return resolveQuoteDepth(options.quoteDepth, config.quoteDepth, process.env.BIRD_QUOTE_DEPTH);
 }
 
 function detectMime(path: string): string | null {
@@ -404,6 +425,7 @@ program
   .action(async (text: string) => {
     const opts = program.opts();
     const timeoutMs = resolveTimeoutFromOptions(opts);
+    const quoteDepth = resolveQuoteDepthFromOptions(opts);
     let media: MediaSpec[] = [];
     try {
       media = loadMedia({ media: opts.media ?? [], alts: opts.alt ?? [] });
@@ -427,7 +449,7 @@ program
       console.error(`${l('source')}${cookies.source}`);
     }
 
-    const client = new TwitterClient({ cookies, timeoutMs });
+    const client = new TwitterClient({ cookies, timeoutMs, quoteDepth });
     let mediaIds: string[] | undefined;
     if (media.length > 0) {
       const uploaded: string[] = [];
@@ -462,6 +484,7 @@ program
   .action(async (tweetIdOrUrl: string, text: string) => {
     const opts = program.opts();
     const timeoutMs = resolveTimeoutFromOptions(opts);
+    const quoteDepth = resolveQuoteDepthFromOptions(opts);
     let media: MediaSpec[] = [];
     try {
       media = loadMedia({ media: opts.media ?? [], alts: opts.alt ?? [] });
@@ -488,7 +511,7 @@ program
 
     console.error(`${p('info')}Replying to tweet: ${tweetId}`);
 
-    const client = new TwitterClient({ cookies, timeoutMs });
+    const client = new TwitterClient({ cookies, timeoutMs, quoteDepth });
     let mediaIds: string[] | undefined;
     if (media.length > 0) {
       const uploaded: string[] = [];
@@ -523,6 +546,7 @@ program
   .action(async (tweetIdOrUrl: string, cmdOpts: { json?: boolean }) => {
     const opts = program.opts();
     const timeoutMs = resolveTimeoutFromOptions(opts);
+    const quoteDepth = resolveQuoteDepthFromOptions(opts);
 
     const tweetId = extractTweetId(tweetIdOrUrl);
 
@@ -537,7 +561,7 @@ program
       process.exit(1);
     }
 
-    const client = new TwitterClient({ cookies, timeoutMs });
+    const client = new TwitterClient({ cookies, timeoutMs, quoteDepth });
     const result = await client.getTweet(tweetId);
 
     if (result.success && result.tweet) {
@@ -566,6 +590,7 @@ program
   .action(async (tweetIdOrUrl: string, cmdOpts: { json?: boolean }) => {
     const opts = program.opts();
     const timeoutMs = resolveTimeoutFromOptions(opts);
+    const quoteDepth = resolveQuoteDepthFromOptions(opts);
     const tweetId = extractTweetId(tweetIdOrUrl);
 
     const { cookies, warnings } = await resolveCredentialsFromOptions(opts);
@@ -579,7 +604,7 @@ program
       process.exit(1);
     }
 
-    const client = new TwitterClient({ cookies, timeoutMs });
+    const client = new TwitterClient({ cookies, timeoutMs, quoteDepth });
     const result = await client.getReplies(tweetId);
 
     if (result.success && result.tweets) {
@@ -599,6 +624,7 @@ program
   .action(async (tweetIdOrUrl: string, cmdOpts: { json?: boolean }) => {
     const opts = program.opts();
     const timeoutMs = resolveTimeoutFromOptions(opts);
+    const quoteDepth = resolveQuoteDepthFromOptions(opts);
     const tweetId = extractTweetId(tweetIdOrUrl);
 
     const { cookies, warnings } = await resolveCredentialsFromOptions(opts);
@@ -612,7 +638,7 @@ program
       process.exit(1);
     }
 
-    const client = new TwitterClient({ cookies, timeoutMs });
+    const client = new TwitterClient({ cookies, timeoutMs, quoteDepth });
     const result = await client.getThread(tweetId);
 
     if (result.success && result.tweets) {
@@ -633,6 +659,7 @@ program
   .action(async (query: string, cmdOpts: { count?: string; json?: boolean }) => {
     const opts = program.opts();
     const timeoutMs = resolveTimeoutFromOptions(opts);
+    const quoteDepth = resolveQuoteDepthFromOptions(opts);
     const count = Number.parseInt(cmdOpts.count || '10', 10);
 
     const { cookies, warnings } = await resolveCredentialsFromOptions(opts);
@@ -646,7 +673,7 @@ program
       process.exit(1);
     }
 
-    const client = new TwitterClient({ cookies, timeoutMs });
+    const client = new TwitterClient({ cookies, timeoutMs, quoteDepth });
     const result = await client.search(query, count);
 
     if (result.success && result.tweets) {
@@ -667,6 +694,7 @@ program
   .action(async (cmdOpts: { user?: string; count?: string; json?: boolean }) => {
     const opts = program.opts();
     const timeoutMs = resolveTimeoutFromOptions(opts);
+    const quoteDepth = resolveQuoteDepthFromOptions(opts);
     const count = Number.parseInt(cmdOpts.count || '10', 10);
 
     const fromUserOpt = mentionsQueryFromUserOption(cmdOpts.user);
@@ -688,7 +716,7 @@ program
       process.exit(1);
     }
 
-    const client = new TwitterClient({ cookies, timeoutMs });
+    const client = new TwitterClient({ cookies, timeoutMs, quoteDepth });
 
     if (!query) {
       const who = await client.getCurrentUser();
@@ -718,8 +746,9 @@ program
   .command('bookmarks')
   .description('Get your bookmarked tweets')
   .option('-n, --count <number>', 'Number of bookmarks to fetch', '20')
+  .option('--folder-id <id>', 'Bookmark folder (collection) id')
   .option('--json', 'Output as JSON')
-  .action(async (cmdOpts: { count?: string; json?: boolean }) => {
+  .action(async (cmdOpts: { count?: string; json?: boolean; folderId?: string }) => {
     const opts = program.opts();
     const timeoutMs = resolveTimeoutFromOptions(opts);
     const count = Number.parseInt(cmdOpts.count || '20', 10);
@@ -736,10 +765,18 @@ program
     }
 
     const client = new TwitterClient({ cookies, timeoutMs });
-    const result = await client.getBookmarks(count);
+    const folderId = cmdOpts.folderId ? extractBookmarkFolderId(cmdOpts.folderId) : null;
+    if (cmdOpts.folderId && !folderId) {
+      console.error(`${p('err')}Invalid --folder-id. Expected numeric ID or https://x.com/i/bookmarks/<id>.`);
+      process.exit(1);
+    }
+    const result = folderId
+      ? await client.getBookmarkFolderTimeline(folderId, count)
+      : await client.getBookmarks(count);
 
     if (result.success && result.tweets) {
-      printTweets(result.tweets, { json: cmdOpts.json, emptyMessage: 'No bookmarks found.' });
+      const emptyMessage = folderId ? 'No bookmarks found in folder.' : 'No bookmarks found.';
+      printTweets(result.tweets, { json: cmdOpts.json, emptyMessage });
     } else {
       console.error(`${p('err')}Failed to fetch bookmarks: ${result.error}`);
       process.exit(1);
@@ -872,6 +909,39 @@ program
     }
   });
 
+// Likes command - get user's liked tweets
+program
+  .command('likes')
+  .description('Get your liked tweets')
+  .option('-n, --count <number>', 'Number of likes to fetch', '20')
+  .option('--json', 'Output as JSON')
+  .action(async (cmdOpts: { count?: string; json?: boolean }) => {
+    const opts = program.opts();
+    const timeoutMs = resolveTimeoutFromOptions(opts);
+    const quoteDepth = resolveQuoteDepthFromOptions(opts);
+    const count = Number.parseInt(cmdOpts.count || '20', 10);
+
+    const { cookies, warnings } = await resolveCredentialsFromOptions(opts);
+
+    for (const warning of warnings) {
+      console.error(`${p('warn')}${warning}`);
+    }
+
+    if (!cookies.authToken || !cookies.ct0) {
+      console.error(`${p('err')}Missing required credentials`);
+      process.exit(1);
+    }
+
+    const client = new TwitterClient({ cookies, timeoutMs, quoteDepth });
+    const result = await client.getLikes(count);
+
+    if (result.success && result.tweets) {
+      printTweets(result.tweets, { json: cmdOpts.json, emptyMessage: 'No liked tweets found.' });
+    } else {
+      console.error(`${p('err')}Failed to fetch likes: ${result.error}`);
+      process.exit(1);
+    }
+  });
 // Whoami command - show the logged-in account
 program
   .command('whoami')
@@ -879,6 +949,7 @@ program
   .action(async () => {
     const opts = program.opts();
     const timeoutMs = resolveTimeoutFromOptions(opts);
+    const quoteDepth = resolveQuoteDepthFromOptions(opts);
 
     const { cookies, warnings } = await resolveCredentialsFromOptions(opts);
 
@@ -895,7 +966,7 @@ program
       console.error(`${l('source')}${cookies.source}`);
     }
 
-    const client = new TwitterClient({ cookies, timeoutMs });
+    const client = new TwitterClient({ cookies, timeoutMs, quoteDepth });
     const result = await client.getCurrentUser();
 
     const credentialSource = cookies.source ?? 'env/auto-detected cookies';

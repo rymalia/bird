@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TwitterClient } from '../src/lib/twitter-client.js';
+import { type TweetData, TwitterClient } from '../src/lib/twitter-client.js';
 
 describe('TwitterClient', () => {
   const originalFetch = global.fetch;
@@ -8,6 +8,14 @@ describe('TwitterClient', () => {
     ct0: 'test_ct0_token',
     cookieHeader: 'auth_token=test_auth_token; ct0=test_ct0_token',
     source: 'test',
+  };
+  type TwitterClientPrivate = TwitterClient & {
+    getCurrentUser: () => Promise<{
+      success: boolean;
+      user?: { id: string; username: string; name: string };
+      error?: string;
+    }>;
+    getLikesQueryIds: () => Promise<string[]>;
   };
 
   afterEach(() => {
@@ -952,6 +960,95 @@ describe('TwitterClient', () => {
     });
   });
 
+  describe('quoted tweets', () => {
+    const makeTweetResult = (
+      id: string,
+      text: string,
+      username = `user${id}`,
+      name = `User ${id}`,
+    ): Record<string, unknown> => ({
+      rest_id: id,
+      legacy: {
+        full_text: text,
+        created_at: '2024-01-01T00:00:00Z',
+        reply_count: 0,
+        retweet_count: 0,
+        favorite_count: 0,
+        conversation_id_str: id,
+      },
+      core: {
+        user_results: {
+          result: {
+            rest_id: `u${id}`,
+            legacy: { screen_name: username, name },
+          },
+        },
+      },
+    });
+
+    it('includes one level of quoted tweet by default', () => {
+      const quoted = makeTweetResult('2', 'quoted');
+      const root = makeTweetResult('1', 'root');
+      root.quoted_status_result = { result: quoted };
+
+      const client = new TwitterClient({ cookies: validCookies });
+      const mapped = (
+        client as unknown as { mapTweetResult: (result: unknown) => TweetData | undefined }
+      ).mapTweetResult(root);
+
+      expect(mapped?.quotedTweet?.id).toBe('2');
+      expect(mapped?.quotedTweet?.quotedTweet).toBeUndefined();
+    });
+
+    it('honors quoteDepth = 0', () => {
+      const quoted = makeTweetResult('2', 'quoted');
+      const root = makeTweetResult('1', 'root');
+      root.quoted_status_result = { result: quoted };
+
+      const client = new TwitterClient({ cookies: validCookies, quoteDepth: 0 });
+      const mapped = (
+        client as unknown as { mapTweetResult: (result: unknown) => TweetData | undefined }
+      ).mapTweetResult(root);
+
+      expect(mapped?.quotedTweet).toBeUndefined();
+    });
+
+    it('recurses when quoteDepth > 1', () => {
+      const quoted2 = makeTweetResult('3', 'quoted2');
+      const quoted1 = makeTweetResult('2', 'quoted1');
+      quoted1.quoted_status_result = { result: quoted2 };
+      const root = makeTweetResult('1', 'root');
+      root.quoted_status_result = { result: quoted1 };
+
+      const client = new TwitterClient({ cookies: validCookies, quoteDepth: 2 });
+      const mapped = (
+        client as unknown as { mapTweetResult: (result: unknown) => TweetData | undefined }
+      ).mapTweetResult(root);
+
+      expect(mapped?.quotedTweet?.id).toBe('2');
+      expect(mapped?.quotedTweet?.quotedTweet?.id).toBe('3');
+      expect(mapped?.quotedTweet?.quotedTweet?.quotedTweet).toBeUndefined();
+    });
+
+    it('unwraps quoted tweet visibility wrappers', () => {
+      const quoted = makeTweetResult('2', 'quoted');
+      const root = makeTweetResult('1', 'root');
+      root.quoted_status_result = {
+        result: {
+          __typename: 'TweetWithVisibilityResults',
+          tweet: quoted,
+        },
+      };
+
+      const client = new TwitterClient({ cookies: validCookies });
+      const mapped = (
+        client as unknown as { mapTweetResult: (result: unknown) => TweetData | undefined }
+      ).mapTweetResult(root);
+
+      expect(mapped?.quotedTweet?.id).toBe('2');
+    });
+  });
+
   describe('search', () => {
     let mockFetch: ReturnType<typeof vi.fn>;
 
@@ -1332,7 +1429,248 @@ describe('TwitterClient', () => {
       expect(mockFetch).toHaveBeenCalledTimes(2);
     });
   });
+  describe('likes', () => {
+    let mockFetch: ReturnType<typeof vi.fn>;
 
+    beforeEach(() => {
+      mockFetch = vi.fn();
+      global.fetch = mockFetch as unknown as typeof fetch;
+    });
+
+    it('fetches likes and parses tweet results', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: {
+            user: {
+              result: {
+                timeline: {
+                  timeline: {
+                    instructions: [
+                      {
+                        entries: [
+                          {
+                            content: {
+                              itemContent: {
+                                tweet_results: {
+                                  result: {
+                                    rest_id: '2',
+                                    legacy: {
+                                      full_text: 'liked',
+                                      created_at: '2024-01-01T00:00:00Z',
+                                      reply_count: 0,
+                                      retweet_count: 0,
+                                      favorite_count: 0,
+                                      conversation_id_str: '2',
+                                    },
+                                    core: {
+                                      user_results: {
+                                        result: {
+                                          rest_id: 'u2',
+                                          legacy: { screen_name: 'root', name: 'Root' },
+                                        },
+                                      },
+                                    },
+                                  },
+                                },
+                              },
+                            },
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        }),
+      });
+
+      const client = new TwitterClient({ cookies: validCookies });
+      const clientPrivate = client as unknown as TwitterClientPrivate;
+      clientPrivate.getCurrentUser = async () => ({
+        success: true,
+        user: { id: '42', username: 'tester', name: 'Tester' },
+      });
+      clientPrivate.getLikesQueryIds = async () => ['test'];
+
+      const result = await client.getLikes(2);
+
+      expect(result.success).toBe(true);
+      expect(result.tweets?.[0].id).toBe('2');
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+
+      const [url, options] = mockFetch.mock.calls[0];
+      expect(options.method).toBe('GET');
+      expect(String(url)).toContain('/Likes?');
+      const parsedVars = JSON.parse(new URL(url as string).searchParams.get('variables') as string);
+      expect(parsedVars.userId).toBe('42');
+      expect(parsedVars.count).toBe(2);
+      const parsedFeatures = JSON.parse(new URL(url as string).searchParams.get('features') as string);
+      expect(parsedFeatures.graphql_timeline_v2_bookmark_timeline).toBeUndefined();
+    });
+
+    it('returns an error when current user is unavailable', async () => {
+      const client = new TwitterClient({ cookies: validCookies });
+      const clientPrivate = client as unknown as TwitterClientPrivate;
+      clientPrivate.getCurrentUser = async () => ({ success: false, error: 'no user' });
+
+      const result = await client.getLikes(1);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('no user');
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+  });
+  describe('bookmark folders', () => {
+    let mockFetch: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      mockFetch = vi.fn();
+      global.fetch = mockFetch as unknown as typeof fetch;
+    });
+
+    it('fetches bookmark folder timeline and parses tweet results', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: {
+            bookmark_collection_timeline: {
+              timeline: {
+                instructions: [
+                  {
+                    entries: [
+                      {
+                        content: {
+                          itemContent: {
+                            tweet_results: {
+                              result: {
+                                rest_id: '9',
+                                legacy: {
+                                  full_text: 'saved in folder',
+                                  created_at: '2024-01-01T00:00:00Z',
+                                  reply_count: 0,
+                                  retweet_count: 0,
+                                  favorite_count: 0,
+                                  conversation_id_str: '9',
+                                },
+                                core: {
+                                  user_results: {
+                                    result: {
+                                      rest_id: 'u9',
+                                      legacy: { screen_name: 'folder', name: 'Folder' },
+                                    },
+                                  },
+                                },
+                              },
+                            },
+                          },
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+        }),
+      });
+
+      const client = new TwitterClient({ cookies: validCookies });
+      const result = await client.getBookmarkFolderTimeline('123', 2);
+
+      expect(result.success).toBe(true);
+      expect(result.tweets?.[0].id).toBe('9');
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+
+      const [url, options] = mockFetch.mock.calls[0];
+      expect(options.method).toBe('GET');
+      expect(String(url)).toContain('/BookmarkFolderTimeline?');
+      const parsedVars = JSON.parse(new URL(url as string).searchParams.get('variables') as string);
+      expect(parsedVars.bookmark_collection_id).toBe('123');
+      expect(parsedVars.count).toBe(2);
+      const parsedFeatures = JSON.parse(new URL(url as string).searchParams.get('features') as string);
+      expect(parsedFeatures.graphql_timeline_v2_bookmark_timeline).toBe(true);
+    });
+
+    it('retries without count when API rejects the count variable', async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            errors: [{ message: 'Variable "$count" is not defined by operation' }],
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: {
+              bookmark_collection_timeline: {
+                timeline: {
+                  instructions: [
+                    {
+                      entries: [
+                        {
+                          content: {
+                            itemContent: {
+                              tweet_results: {
+                                result: {
+                                  rest_id: '9',
+                                  legacy: {
+                                    full_text: 'saved in folder',
+                                    created_at: '2024-01-01T00:00:00Z',
+                                    reply_count: 0,
+                                    retweet_count: 0,
+                                    favorite_count: 0,
+                                    conversation_id_str: '9',
+                                  },
+                                  core: {
+                                    user_results: {
+                                      result: {
+                                        rest_id: 'u9',
+                                        legacy: { screen_name: 'folder', name: 'Folder' },
+                                      },
+                                    },
+                                  },
+                                },
+                              },
+                            },
+                          },
+                        },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+          }),
+        });
+
+      const client = new TwitterClient({ cookies: validCookies });
+      const clientPrivate = client as TwitterClient & { getBookmarkFolderQueryIds: () => Promise<string[]> };
+      clientPrivate.getBookmarkFolderQueryIds = async () => ['test'];
+
+      const result = await client.getBookmarkFolderTimeline('123', 2);
+
+      expect(result.success).toBe(true);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+
+      const firstVars = JSON.parse(
+        new URL(mockFetch.mock.calls[0][0] as string).searchParams.get('variables') as string,
+      );
+      const secondVars = JSON.parse(
+        new URL(mockFetch.mock.calls[1][0] as string).searchParams.get('variables') as string,
+      );
+
+      expect(firstVars.count).toBe(2);
+      expect(secondVars.count).toBeUndefined();
+    });
+  });
   describe('conversation helpers', () => {
     let mockFetch: ReturnType<typeof vi.fn>;
 

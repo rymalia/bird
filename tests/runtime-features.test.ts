@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { clearFeatureOverridesCache, refreshFeatureOverridesCache } from '../src/lib/runtime-features.js';
-import { buildLikesFeatures, buildSearchFeatures } from '../src/lib/twitter-client-features.js';
+import { buildLikesFeatures, buildListsFeatures, buildSearchFeatures } from '../src/lib/twitter-client-features.js';
 
 describe('runtime-features', () => {
   afterEach(() => {
@@ -109,5 +109,15 @@ describe('runtime-features', () => {
     const search = buildSearchFeatures();
     expect(search.file_flag).toBe(true);
     expect(search.file_search).toBe(true);
+  });
+
+  it('includes required lists API feature flags', () => {
+    const features = buildListsFeatures();
+    expect(features.responsive_web_graphql_exclude_directive_enabled).toBe(true);
+    expect(features.blue_business_profile_image_shape_enabled).toBe(false);
+    expect(features.responsive_web_text_conversations_enabled).toBe(false);
+    expect(features.tweetypie_unmention_optimization_enabled).toBe(true);
+    expect(features.vibe_api_enabled).toBe(false);
+    expect(features.interactive_text_enabled).toBe(false);
   });
 });

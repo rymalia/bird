@@ -22,6 +22,7 @@
 - Tweet JSON output now includes media items (photos, videos, GIFs) (#14) — thanks @Hormold
 - Bookmarks can resume pagination from a cursor (#26) — thanks @leonho
 - `unbookmark` command to remove bookmarked tweets (#22) — thanks @mbelinky.
+- `following` now paginates with cursors and surfaces partial-page errors (#33) — thanks @VACInc.
 
 ### Changed
 - Feature flags can be overridden at runtime via `features.json` (refreshable via `query-ids`).

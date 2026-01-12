@@ -23,6 +23,7 @@
 - Lists GraphQL feature flags updated to prevent 400s (#27) — thanks @zheli.
 - Likes pagination now follows cursors and avoids stalling on duplicate pages (#12) — thanks @titouv.
 - Tweet detail parsing now tolerates partial GraphQL errors when usable data exists (#48) — thanks @jsholmes.
+- Lists feature overrides now scope new GraphQL flags correctly (#50) — thanks @ryanh-ai.
 - `pnpm run build:dist` now succeeds after tightening JSON/pagination option typing in tweet output commands.
 - News output now respects `--tweets-per-item`, keeps unique IDs, and parses non-add entry instructions (#39) — thanks @aavetis.
 

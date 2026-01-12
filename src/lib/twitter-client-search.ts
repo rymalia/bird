@@ -4,6 +4,8 @@ import { buildSearchFeatures } from './twitter-client-features.js';
 import type { SearchResult, TweetData } from './twitter-client-types.js';
 import { extractCursorFromInstructions, parseTweetsFromInstructions } from './twitter-client-utils.js';
 
+const RAW_QUERY_MISSING_REGEX = /must be defined/i;
+
 /** Options for search methods */
 export interface SearchFetchOptions {
   /** Include raw GraphQL response in `_raw` field */
@@ -24,7 +26,7 @@ function isQueryIdMismatch(payload: string): boolean {
         if (error?.extensions?.code === 'GRAPHQL_VALIDATION_FAILED') {
           return true;
         }
-        if (error?.path?.includes('rawQuery') && /must be defined/i.test(error.message ?? '')) {
+        if (error?.path?.includes('rawQuery') && RAW_QUERY_MISSING_REGEX.test(error.message ?? '')) {
           return true;
         }
         return false;
@@ -143,7 +145,9 @@ export function withSearch<TBase extends AbstractConstructor<TwitterClientBase>>
             };
 
             if (data.errors && data.errors.length > 0) {
-              const shouldRefreshQueryIds = data.errors.some((error) => error?.extensions?.code === 'GRAPHQL_VALIDATION_FAILED');
+              const shouldRefreshQueryIds = data.errors.some(
+                (error) => error?.extensions?.code === 'GRAPHQL_VALIDATION_FAILED',
+              );
               return {
                 success: false as const,
                 error: data.errors.map((e) => e.message).join(', '),

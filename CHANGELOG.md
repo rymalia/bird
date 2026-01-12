@@ -8,6 +8,7 @@
 - Rich text output now shows article previews, quoted tweets, and media links (#32) — thanks @odysseus0.
 - `user-tweets` command to fetch a user's profile timeline (#34) — thanks @crcatala.
 - `replies` and `thread` now support pagination (`--all`, `--max-pages`, `--cursor`, `--delay`) (#35) — thanks @crcatala.
+- Long-form article tweets now render rich Draft.js content blocks/entities (#36) — thanks @crcatala.
 
 ### Changed
 - Library typing: `SearchResult` is now a discriminated union (so `error` only exists when `success: false`).

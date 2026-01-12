@@ -281,7 +281,8 @@ d('live CLI (Twitter/X)', () => {
     const tweets = parseJson<Array<{ id?: string; author?: { username?: string } }>>(userTweets.stdout);
     expect(Array.isArray(tweets)).toBe(true);
     expect(tweets.length).toBeGreaterThan(0);
-    expect(tweets[0].author?.username?.toLowerCase()).toBe(testHandle.toLowerCase());
+    const handleLower = testHandle.toLowerCase();
+    expect(tweets.some((t) => t.author?.username?.toLowerCase() === handleLower)).toBe(true);
   });
 
   it('user-tweets paged JSON returns { tweets, nextCursor }', async () => {

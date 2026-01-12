@@ -280,4 +280,101 @@ describe('TwitterClient following/followers', () => {
     expect(urls[1]).toContain('/Followers?');
     expect(urls[2]).toContain('/followers/list.json?');
   });
+
+  it('passes cursor parameter to followers API and returns nextCursor', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: {
+          user: {
+            result: {
+              timeline: {
+                timeline: {
+                  instructions: [
+                    {
+                      entries: [
+                        {
+                          content: {
+                            itemContent: {
+                              user_results: {
+                                result: makeUserResult('9', 'beta', 'Beta'),
+                              },
+                            },
+                          },
+                        },
+                        {
+                          content: {
+                            cursorType: 'Bottom',
+                            value: 'followers-next-cursor',
+                          },
+                        },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      }),
+    });
+
+    const client = new TwitterClient({ cookies: validCookies });
+    const clientPrivate = client as unknown as TwitterClient & { getFollowersQueryIds: () => Promise<string[]> };
+    clientPrivate.getFollowersQueryIds = async () => ['test'];
+
+    const result = await client.getFollowers('456', 50, 'my-cursor');
+
+    expect(result.success).toBe(true);
+    expect(result.users?.[0].username).toBe('beta');
+    expect(result.nextCursor).toBe('followers-next-cursor');
+
+    const [url] = mockFetch.mock.calls[0];
+    const parsedVars = JSON.parse(new URL(url as string).searchParams.get('variables') as string);
+    expect(parsedVars.cursor).toBe('my-cursor');
+  });
+
+  it('returns undefined nextCursor when no cursor in followers response', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: {
+          user: {
+            result: {
+              timeline: {
+                timeline: {
+                  instructions: [
+                    {
+                      entries: [
+                        {
+                          content: {
+                            itemContent: {
+                              user_results: {
+                                result: makeUserResult('1', 'only', 'Only'),
+                              },
+                            },
+                          },
+                        },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      }),
+    });
+
+    const client = new TwitterClient({ cookies: validCookies });
+    const clientPrivate = client as unknown as TwitterClient & { getFollowersQueryIds: () => Promise<string[]> };
+    clientPrivate.getFollowersQueryIds = async () => ['test'];
+
+    const result = await client.getFollowers('123', 20);
+
+    expect(result.success).toBe(true);
+    expect(result.nextCursor).toBeUndefined();
+  });
 });

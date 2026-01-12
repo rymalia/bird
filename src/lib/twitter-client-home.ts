@@ -4,6 +4,12 @@ import { buildHomeTimelineFeatures } from './twitter-client-features.js';
 import type { GraphqlTweetResult, SearchResult, TweetData } from './twitter-client-types.js';
 import { extractCursorFromInstructions, parseTweetsFromInstructions } from './twitter-client-utils.js';
 
+const QUERY_UNSPECIFIED_REGEX = /query:\s*unspecified/i;
+
+function isQueryIdMismatch(errors: Array<{ message?: string }>): boolean {
+  return errors.some((error) => QUERY_UNSPECIFIED_REGEX.test(error.message ?? ''));
+}
+
 /** Options for home timeline fetch methods */
 export interface HomeTimelineFetchOptions {
   /** Include raw GraphQL response in `_raw` field */
@@ -124,7 +130,12 @@ export function withHome<TBase extends AbstractConstructor<TwitterClientBase>>(
             };
 
             if (data.errors && data.errors.length > 0) {
-              return { success: false as const, error: data.errors.map((e) => e.message).join(', '), had404 };
+              const errorMessage = data.errors.map((e) => e.message).join(', ');
+              return {
+                success: false as const,
+                error: errorMessage,
+                had404: had404 || isQueryIdMismatch(data.errors),
+              };
             }
 
             const instructions = data.data?.home?.home_timeline_urt?.instructions;

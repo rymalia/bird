@@ -112,6 +112,26 @@ describe('TwitterClient news API coverage', () => {
       expect(result.items?.[0].url).toBe('https://x.com/hashtag/AI');
     });
 
+    it('includes raw item content when includeRaw is true', async () => {
+      const itemContent = {
+        is_ai_trend: true,
+        name: 'AI News',
+        social_context: { text: 'AI · 1h ago · 1.2K posts' },
+      };
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValueOnce(makeResponse({ json: async () => makeTimelineResponse([itemContent]) }))
+        .mockResolvedValue(makeResponse({ json: async () => makeTimelineResponse([]) }));
+
+      global.fetch = mockFetch as unknown as typeof fetch;
+
+      const client = new TwitterClient({ cookies: validCookies });
+      const result = await client.getNews(1, { includeRaw: true });
+
+      expect(result.success).toBe(true);
+      expect(result.items?.[0]._raw).toEqual(itemContent);
+    });
+
     it('filters to AI-only items when aiOnly is true', async () => {
       const mockFetch = vi
         .fn()
@@ -140,6 +160,31 @@ describe('TwitterClient news API coverage', () => {
       expect(result.success).toBe(true);
       expect(result.items?.length).toBe(1);
       expect(result.items?.[0].headline).toBe('AI News');
+    });
+
+    it('fetches only selected tabs', async () => {
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValueOnce(
+          makeResponse({
+            json: async () =>
+              makeTimelineResponse([
+                {
+                  is_ai_trend: true,
+                  name: 'News 1',
+                },
+              ]),
+          }),
+        )
+        .mockResolvedValue(makeResponse({ json: async () => makeTimelineResponse([]) }));
+
+      global.fetch = mockFetch as unknown as typeof fetch;
+
+      const client = new TwitterClient({ cookies: validCookies });
+      const result = await client.getNews(1, { tabs: ['news'] });
+
+      expect(result.success).toBe(true);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
 
     it('returns error for non-ok responses', async () => {
@@ -321,6 +366,32 @@ describe('TwitterClient news API coverage', () => {
       expect(result.success).toBe(true);
       const ids = result.items?.map((item) => item.id) ?? [];
       expect(new Set(ids).size).toBe(ids.length);
+    });
+
+    it('uses trend urls as ids when available', async () => {
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValueOnce(
+          makeResponse({
+            json: async () =>
+              makeTimelineResponse([
+                {
+                  is_ai_trend: true,
+                  name: 'Headline A',
+                  trend_url: { url: 'https://x.com/hashtag/A' },
+                },
+              ]),
+          }),
+        )
+        .mockResolvedValue(makeResponse({ json: async () => makeTimelineResponse([]) }));
+
+      global.fetch = mockFetch as unknown as typeof fetch;
+
+      const client = new TwitterClient({ cookies: validCookies });
+      const result = await client.getNews(1);
+
+      expect(result.success).toBe(true);
+      expect(result.items?.[0].id).toBe('https://x.com/hashtag/A');
     });
   });
 });

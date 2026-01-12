@@ -12,8 +12,16 @@ export interface SearchFetchOptions {
   includeRaw?: boolean;
 }
 
+/** Options for paged search methods */
+export interface SearchPaginationOptions extends SearchFetchOptions {
+  maxPages?: number;
+  /** Starting cursor for pagination (resume from previous fetch) */
+  cursor?: string;
+}
+
 export interface TwitterClientSearchMethods {
   search(query: string, count?: number, options?: SearchFetchOptions): Promise<SearchResult>;
+  getAllSearchResults(query: string, options?: SearchPaginationOptions): Promise<SearchResult>;
 }
 
 function isQueryIdMismatch(payload: string): boolean {
@@ -50,12 +58,25 @@ export function withSearch<TBase extends AbstractConstructor<TwitterClientBase>>
      * Search for tweets matching a query
      */
     async search(query: string, count = 20, options: SearchFetchOptions = {}): Promise<SearchResult> {
-      const { includeRaw = false } = options;
+      return this.searchPaged(query, count, options);
+    }
+
+    /**
+     * Get all search results (paged)
+     */
+    async getAllSearchResults(query: string, options?: SearchPaginationOptions): Promise<SearchResult> {
+      return this.searchPaged(query, Number.POSITIVE_INFINITY, options);
+    }
+
+    private async searchPaged(query: string, limit: number, options: SearchPaginationOptions = {}): Promise<SearchResult> {
       const features = buildSearchFeatures();
       const pageSize = 20;
       const seen = new Set<string>();
       const tweets: TweetData[] = [];
-      let cursor: string | undefined;
+      let cursor: string | undefined = options.cursor;
+      let nextCursor: string | undefined;
+      let pagesFetched = 0;
+      const { includeRaw = false, maxPages } = options;
 
       const fetchPage = async (pageCount: number, pageCursor?: string) => {
         let lastError: string | undefined;
@@ -184,31 +205,42 @@ export function withSearch<TBase extends AbstractConstructor<TwitterClientBase>>
         return { success: false as const, error: firstAttempt.error };
       };
 
-      while (tweets.length < count) {
-        const pageCount = Math.min(pageSize, count - tweets.length);
+      const unlimited = !Number.isFinite(limit);
+      while (unlimited || tweets.length < limit) {
+        const pageCount = unlimited ? pageSize : Math.min(pageSize, limit - tweets.length);
         const page = await fetchWithRefresh(pageCount, cursor);
         if (!page.success) {
           return { success: false, error: page.error };
         }
+        pagesFetched += 1;
 
+        let added = 0;
         for (const tweet of page.tweets) {
           if (seen.has(tweet.id)) {
             continue;
           }
           seen.add(tweet.id);
           tweets.push(tweet);
-          if (tweets.length >= count) {
+          added += 1;
+          if (!unlimited && tweets.length >= limit) {
             break;
           }
         }
 
-        if (!page.cursor || page.cursor === cursor || page.tweets.length === 0) {
+        const pageCursor = page.cursor;
+        if (!pageCursor || pageCursor === cursor || page.tweets.length === 0 || added === 0) {
+          nextCursor = undefined;
           break;
         }
-        cursor = page.cursor;
+        if (maxPages && pagesFetched >= maxPages) {
+          nextCursor = pageCursor;
+          break;
+        }
+        cursor = pageCursor;
+        nextCursor = pageCursor;
       }
 
-      return { success: true, tweets };
+      return { success: true, tweets, nextCursor };
     }
   }
 

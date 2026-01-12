@@ -341,6 +341,141 @@ describe('TwitterClient search', () => {
     expect(result.tweets?.map((tweet) => tweet.id)).toEqual(['1']);
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
+
+  it('respects maxPages when fetching all search results', async () => {
+    const makeSearchEntry = (id: string, text: string) => ({
+      content: {
+        itemContent: {
+          tweet_results: {
+            result: {
+              rest_id: id,
+              legacy: {
+                full_text: text,
+                created_at: '2024-01-01T00:00:00Z',
+                reply_count: 0,
+                retweet_count: 0,
+                favorite_count: 0,
+                conversation_id_str: id,
+              },
+              core: {
+                user_results: {
+                  result: { legacy: { screen_name: 'root', name: 'Root' } },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: {
+            search_by_raw_query: {
+              search_timeline: {
+                timeline: {
+                  instructions: [
+                    {
+                      entries: [
+                        makeSearchEntry('1', 'page 1'),
+                        { content: { cursorType: 'Bottom', value: 'cursor-1' } },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: {
+            search_by_raw_query: {
+              search_timeline: {
+                timeline: {
+                  instructions: [
+                    {
+                      entries: [makeSearchEntry('2', 'page 2')],
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        }),
+      });
+
+    const client = new TwitterClient({ cookies: validCookies });
+    const result = await client.getAllSearchResults('query', { maxPages: 1 });
+
+    expect(result.success).toBe(true);
+    expect(result.tweets?.map((tweet) => tweet.id)).toEqual(['1']);
+    expect(result.nextCursor).toBe('cursor-1');
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not return a stale cursor when search pagination ends', async () => {
+    const makeSearchEntry = (id: string) => ({
+      content: {
+        itemContent: {
+          tweet_results: {
+            result: {
+              rest_id: id,
+              legacy: {
+                full_text: `tweet-${id}`,
+                created_at: '2024-01-01T00:00:00Z',
+                reply_count: 0,
+                retweet_count: 0,
+                favorite_count: 0,
+                conversation_id_str: id,
+              },
+              core: {
+                user_results: {
+                  result: { legacy: { screen_name: 'root', name: 'Root' } },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: {
+          search_by_raw_query: {
+            search_timeline: {
+              timeline: {
+                instructions: [
+                  {
+                    entries: [makeSearchEntry('1')],
+                  },
+                ],
+              },
+            },
+          },
+        },
+      }),
+    });
+
+    const client = new TwitterClient({ cookies: validCookies });
+    const result = await client.getAllSearchResults('query', { cursor: 'old-cursor' });
+
+    expect(result.success).toBe(true);
+    expect(result.nextCursor).toBeUndefined();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    const vars = JSON.parse(new URL(mockFetch.mock.calls[0][0] as string).searchParams.get('variables') as string);
+    expect(vars.cursor).toBe('old-cursor');
+  });
 });
 
 describe('TwitterClient bookmarks', () => {

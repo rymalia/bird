@@ -108,9 +108,11 @@ export function createProgram(ctx: CliContext): Command {
       `\n\n${ctx.colors.section('Config')}\n${ctx.colors.muted(
         `  Reads ${ctx.colors.argument('~/.config/bird/config.json5')} and ${ctx.colors.argument('./.birdrc.json5')} (JSON5)`,
       )}\n${ctx.colors.muted(
-        `  Supports: chromeProfile, chromeProfileDir, firefoxProfile, cookieSource, cookieTimeoutMs, timeoutMs, quoteDepth`,
+        `  Supports: chromeProfile, chromeProfileDir, firefoxProfile, cookieSource, cookieTimeoutMs, timeoutMs, quoteDepth, translation`,
       )}\n\n${ctx.colors.section('Env')}\n${ctx.colors.muted(
         `  ${ctx.colors.option('NO_COLOR')}, ${ctx.colors.option('BIRD_TIMEOUT_MS')}, ${ctx.colors.option('BIRD_COOKIE_TIMEOUT_MS')}, ${ctx.colors.option('BIRD_QUOTE_DEPTH')}`,
+      )}\n${ctx.colors.muted(
+        `  ${ctx.colors.option('BIRD_TRANSLATION_PROVIDER')}, ${ctx.colors.option('BIRD_TRANSLATION_API_KEY')}, ${ctx.colors.option('BIRD_TRANSLATION_MODEL')}`,
       )}`,
   );
 
@@ -132,7 +134,11 @@ export function createProgram(ctx: CliContext): Command {
     .option('--quote-depth <depth>', 'Max quoted tweet depth (default: 1; 0 disables)')
     .option('--plain', 'Plain output (stable, no emoji, no color)')
     .option('--no-emoji', 'Disable emoji output')
-    .option('--no-color', 'Disable ANSI colors (or set NO_COLOR)');
+    .option('--no-color', 'Disable ANSI colors (or set NO_COLOR)')
+    .option('--translate <lang>', 'Translate tweets to target language (e.g., "en")')
+    .option('--translation-provider <provider>', 'Translation provider (openai, anthropic)')
+    .option('--translation-api-key <key>', 'Translation service API key')
+    .option('--translation-model <model>', 'Model for AI translation providers');
 
   program.hook('preAction', (_thisCommand, actionCommand) => {
     ctx.applyOutputFromCommand(actionCommand);

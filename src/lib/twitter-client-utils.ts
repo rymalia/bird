@@ -563,6 +563,8 @@ export function mapTweetResult(
     likeCount: result.legacy?.favorite_count,
     conversationId: result.legacy?.conversation_id_str,
     inReplyToStatusId: result.legacy?.in_reply_to_status_id_str ?? undefined,
+    lang: result.legacy?.lang,
+    isTranslatable: result.is_translatable,
     author: {
       username,
       name: name || username,

@@ -14,6 +14,7 @@ import {
   resolveOutputConfigFromCommander,
   statusPrefix,
 } from '../lib/output.js';
+import { SUPPORTED_PROVIDERS, type TranslationOptions, type TranslationProvider } from '../lib/translation/index.js';
 import type { TweetData } from '../lib/twitter-client.js';
 
 export type BirdConfig = {
@@ -24,9 +25,29 @@ export type BirdConfig = {
   cookieTimeoutMs?: number;
   timeoutMs?: number;
   quoteDepth?: number;
+  /** Translation settings */
+  translation?: {
+    /** Translation provider (openai, anthropic, etc.) */
+    provider?: TranslationProvider;
+    /** API key for the translation service */
+    apiKey?: string;
+    /** Custom API endpoint (for self-hosted providers) */
+    apiEndpoint?: string;
+    /** Model name for AI providers */
+    model?: string;
+    /** Default target language for translations (e.g., "en") */
+    defaultTargetLang?: string;
+  };
 };
 
 export type MediaSpec = { path: string; alt?: string; mime: string; buffer: Buffer };
+
+export type TranslationCommandOptions = {
+  translate?: string;
+  translationProvider?: string;
+  translationApiKey?: string;
+  translationModel?: string;
+};
 
 export type CliContext = {
   isTty: boolean;
@@ -64,6 +85,12 @@ export type CliContext = {
     },
   ) => void;
   extractTweetId: (tweetIdOrUrl: string) => string;
+  resolveTranslationOptionsFromCommand: (opts: TranslationCommandOptions) =>
+    | {
+        targetLang: string;
+        options: TranslationOptions;
+      }
+    | undefined;
 };
 
 const COOKIE_SOURCES: CookieSource[] = ['safari', 'chrome', 'firefox'];
@@ -363,6 +390,14 @@ export function createCliContext(normalizedArgs: string[], env: NodeJS.ProcessEn
         console.log(tweet.text);
       }
 
+      // Display translated text if present
+      if (tweet.translatedText && tweet.translatedTo) {
+        const translateLabel = useEmoji ? '🌐' : 'Translated:';
+        const langInfo = tweet.lang ? ` (${tweet.lang} → ${tweet.translatedTo})` : ` (→ ${tweet.translatedTo})`;
+        console.log(`\n${translateLabel}${langInfo}`);
+        console.log(tweet.translatedText);
+      }
+
       // Display media attachments
       if (tweet.media && tweet.media.length > 0) {
         for (const m of tweet.media) {
@@ -416,6 +451,51 @@ export function createCliContext(normalizedArgs: string[], env: NodeJS.ProcessEn
     printTweets(tweets, { json: opts.json, emptyMessage: opts.emptyMessage });
   }
 
+  function resolveTranslationOptionsFromCommand(
+    opts: TranslationCommandOptions,
+  ): { targetLang: string; options: TranslationOptions } | undefined {
+    // If no --translate flag, no translation needed
+    if (!opts.translate) {
+      return undefined;
+    }
+
+    const targetLang = opts.translate || config.translation?.defaultTargetLang;
+    if (!targetLang) {
+      throw new Error('Translation target language is required (--translate <lang>)');
+    }
+
+    // Resolve provider: CLI flag > config > env > error
+    const providerRaw = opts.translationProvider ?? config.translation?.provider ?? env.BIRD_TRANSLATION_PROVIDER;
+    if (!providerRaw) {
+      throw new Error(
+        `Translation provider is required. Use --translation-provider or set BIRD_TRANSLATION_PROVIDER. Available: ${SUPPORTED_PROVIDERS.join(', ')}`,
+      );
+    }
+    const provider = providerRaw as TranslationProvider;
+    if (!SUPPORTED_PROVIDERS.includes(provider as (typeof SUPPORTED_PROVIDERS)[number])) {
+      throw new Error(`Unsupported translation provider "${provider}". Available: ${SUPPORTED_PROVIDERS.join(', ')}`);
+    }
+
+    // Resolve API key: CLI flag > config > env
+    const apiKey = opts.translationApiKey ?? config.translation?.apiKey ?? env.BIRD_TRANSLATION_API_KEY;
+
+    // Resolve model: CLI flag > config > env
+    const model = opts.translationModel ?? config.translation?.model ?? env.BIRD_TRANSLATION_MODEL;
+
+    // Resolve endpoint from config
+    const apiEndpoint = config.translation?.apiEndpoint;
+
+    return {
+      targetLang,
+      options: {
+        provider,
+        apiKey,
+        apiEndpoint,
+        model,
+      },
+    };
+  }
+
   return {
     isTty,
     getOutput: () => output,
@@ -431,5 +511,6 @@ export function createCliContext(normalizedArgs: string[], env: NodeJS.ProcessEn
     printTweets,
     printTweetsResult,
     extractTweetId,
+    resolveTranslationOptionsFromCommand,
   };
 }

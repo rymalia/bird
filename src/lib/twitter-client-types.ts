@@ -26,6 +26,7 @@ export interface GraphqlMediaEntity {
 export type GraphqlTweetResult = {
   __typename?: string;
   rest_id?: string;
+  is_translatable?: boolean;
   legacy?: {
     full_text?: string;
     created_at?: string;
@@ -34,6 +35,8 @@ export type GraphqlTweetResult = {
     favorite_count?: number;
     conversation_id_str?: string;
     in_reply_to_status_id_str?: string | null;
+    /** ISO 639-1 language code (e.g., "en", "zh", "uk") */
+    lang?: string;
     entities?: {
       media?: GraphqlMediaEntity[];
     };
@@ -273,6 +276,10 @@ export interface TweetData {
   likeCount?: number;
   conversationId?: string;
   inReplyToStatusId?: string;
+  /** ISO 639-1 language code (e.g., "en", "zh", "uk") */
+  lang?: string;
+  /** Whether Twitter considers this tweet translatable */
+  isTranslatable?: boolean;
   // Optional quoted tweet; depth controlled by quoteDepth (default: 1).
   quotedTweet?: TweetData;
   // Media attachments (photos, videos, GIFs)
@@ -284,6 +291,13 @@ export interface TweetData {
   };
   // Raw GraphQL tweet result (only when includeRaw is enabled)
   _raw?: GraphqlTweetResult;
+  // Translation output (only present when --translate is used)
+  /** Translated text (only present when translation is performed) */
+  translatedText?: string;
+  /** Target language of translation */
+  translatedTo?: string;
+  /** Name of the translation provider used */
+  translationProvider?: string;
 }
 
 export interface TweetWithMeta extends TweetData {

@@ -176,7 +176,7 @@ Fields:
 - `bird read <tweet-id-or-url> [--json]` — fetch tweet content as text or JSON.
 - `bird <tweet-id-or-url> [--json]` — shorthand for `read` when only a URL or ID is provided.
 - `bird replies <tweet-id-or-url> [--all] [--max-pages n] [--cursor string] [--delay ms] [--json]` — list replies to a tweet.
-- `bird thread <tweet-id-or-url> [--all] [--max-pages n] [--cursor string] [--delay ms] [--json]` — show the full conversation thread.
+- `bird thread <tweet-id-or-url> [--all] [--max-pages n] [--cursor string] [--delay ms] [--author-chain] [--author-only] [--rooted-thread] [--thread-meta] [--json]` — show the full conversation thread; `--author-chain` filters to the author's connected self-reply chain; `--author-only` includes all tweets from the target tweet's author; `--rooted-thread` keeps the reply chain from root through the target and descendants; `--thread-meta` adds thread position metadata fields.
 - `bird search "<query>" [-n count] [--all] [--max-pages n] [--cursor string] [--json]` — search for tweets matching a query; `--max-pages` requires `--all` or `--cursor`.
 - `bird mentions [-n count] [--user @handle] [--json]` — find tweets mentioning a user (defaults to the authenticated user).
 - `bird user-tweets <@handle> [-n count] [--cursor string] [--max-pages n] [--delay ms] [--json]` — get tweets from a user's profile timeline.
@@ -202,6 +202,12 @@ Bookmarks flags:
 - `--include-parent`: include the direct parent tweet for non-root bookmarks.
 - `--thread-meta`: add thread metadata fields to each tweet.
 - `--sort-chronological`: sort output globally oldest to newest (default preserves bookmark order).
+
+Thread flags:
+- `--author-chain`: filter to the connected self-reply chain anchored at the focal tweet.
+- `--author-only`: include all tweets from the focal tweet's author.
+- `--rooted-thread`: keep the full reply chain from root through the focal tweet and its descendants.
+- `--thread-meta`: add thread metadata fields (`isThread`, `threadPosition`, `hasSelfReplies`, `threadRootId`).
 
 Global options:
 - `--auth-token <token>`: set the `auth_token` cookie manually.

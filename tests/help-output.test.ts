@@ -97,4 +97,30 @@ describe('root help output', () => {
 
     expect(help).toContain('--json-full');
   });
+
+  it('shows thread filter flags in thread command help', () => {
+    const ctx = createCliContext([]);
+    const program = createProgram(ctx);
+    const cmd = program.commands.find((c) => c.name() === 'thread');
+    if (!cmd) {
+      throw new Error('Expected "thread" command to be registered');
+    }
+
+    let help = '';
+    const output = {
+      writeOut: (s) => {
+        help += s;
+      },
+      writeErr: () => {},
+    };
+    program.configureOutput(output);
+    cmd.configureOutput(output);
+
+    cmd.outputHelp();
+
+    expect(help).toContain('--author-chain');
+    expect(help).toContain('--author-only');
+    expect(help).toContain('--rooted-thread');
+    expect(help).toContain('--thread-meta');
+  });
 });

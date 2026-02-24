@@ -2,7 +2,9 @@ import type { Command } from 'commander';
 import { parsePaginationFlags } from '../cli/pagination.js';
 import type { CliContext } from '../cli/shared.js';
 import { formatStatsLine } from '../lib/output.js';
+import { addThreadMetadata, filterAuthorChain, filterAuthorOnly, filterFullChain } from '../lib/thread-filters.js';
 import { TwitterClient } from '../lib/twitter-client.js';
+import type { TweetData, TweetWithMeta } from '../lib/twitter-client-types.js';
 
 export function registerReadCommands(program: Command, ctx: CliContext): void {
   program
@@ -133,6 +135,10 @@ export function registerReadCommands(program: Command, ctx: CliContext): void {
     .option('--cursor <string>', 'Resume pagination from a cursor')
     .option('--json', 'Output as JSON')
     .option('--json-full', 'Output as JSON with full raw API response in _raw field')
+    .option('--author-chain', 'Filter to the connected self-reply chain anchored at the focal tweet')
+    .option('--author-only', 'Include all tweets from the focal tweet author')
+    .option('--rooted-thread', 'Keep the full reply chain from root through the focal tweet and its descendants')
+    .option('--thread-meta', 'Add thread metadata fields (isThread, threadPosition, hasSelfReplies, threadRootId)')
     .action(
       async (
         tweetIdOrUrl: string,
@@ -143,6 +149,10 @@ export function registerReadCommands(program: Command, ctx: CliContext): void {
           cursor?: string;
           json?: boolean;
           jsonFull?: boolean;
+          authorChain?: boolean;
+          authorOnly?: boolean;
+          rootedThread?: boolean;
+          threadMeta?: boolean;
         },
       ) => {
         const opts = program.opts();
@@ -179,13 +189,64 @@ export function registerReadCommands(program: Command, ctx: CliContext): void {
             })
           : await client.getThread(tweetId, { includeRaw });
 
+        // --- Thread filter flags ---
+        const useAuthorChain = Boolean(cmdOpts.authorChain);
+        const useAuthorOnly = Boolean(cmdOpts.authorOnly);
+        const useRootedThread = Boolean(cmdOpts.rootedThread);
+        const useThreadMeta = Boolean(cmdOpts.threadMeta);
+
+        if (useAuthorChain && (useAuthorOnly || useRootedThread)) {
+          console.error(
+            `${ctx.p('warn')}--author-chain already limits to the connected self-reply chain; ` +
+              'other filter flags are redundant.',
+          );
+        }
+        if (useRootedThread && useAuthorOnly && !useAuthorChain) {
+          console.error(
+            `${ctx.p('warn')}--rooted-thread and --author-only are both active; ` +
+              '--rooted-thread will run first, --author-only will then filter its output.',
+          );
+        }
+
+        let filteredTweets: TweetData[] = result.tweets ?? [];
+        const allConversationTweets: TweetData[] = result.tweets ?? [];
+
+        if (useAuthorChain || useAuthorOnly || useRootedThread) {
+          const focalTweet = allConversationTweets.find((t) => t.id === tweetId);
+          if (focalTweet) {
+            if (useAuthorChain) {
+              filteredTweets = filterAuthorChain(allConversationTweets, focalTweet);
+            } else {
+              if (useRootedThread) {
+                filteredTweets = filterFullChain(allConversationTweets, focalTweet);
+              }
+              if (useAuthorOnly) {
+                filteredTweets = filterAuthorOnly(filteredTweets, focalTweet);
+              }
+            }
+          } else {
+            console.error(
+              `${ctx.p('warn')}Focal tweet ${tweetId} not found in thread results; filter flags have no effect.`,
+            );
+          }
+        }
+
+        let finalTweets: Array<TweetData | TweetWithMeta> = filteredTweets;
+        if (useThreadMeta) {
+          finalTweets = filteredTweets.map((tweet) => addThreadMetadata(tweet, allConversationTweets));
+        }
+        // --- End thread filter flags ---
+
         const isJson = Boolean(cmdOpts.json || cmdOpts.jsonFull);
         if (result.tweets) {
-          ctx.printTweetsResult(result, {
-            json: isJson,
-            usePagination: pagination.usePagination,
-            emptyMessage: 'No thread tweets found.',
-          });
+          ctx.printTweetsResult(
+            { tweets: finalTweets as TweetData[], nextCursor: result.nextCursor },
+            {
+              json: isJson,
+              usePagination: pagination.usePagination,
+              emptyMessage: 'No thread tweets found.',
+            },
+          );
 
           // Show pagination hint if there's more
           if (result.nextCursor && !isJson) {

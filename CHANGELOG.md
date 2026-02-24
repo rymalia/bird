@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.1 — 2026-02-24
+
+### Added
+- `thread` command now supports `--author-chain`, `--author-only`, `--rooted-thread`, and `--thread-meta` filter flags — bringing thread output filtering to parity with bookmarks. Filters run in the CLI layer after all pages are collected, keeping `getThread()` as a pure data fetcher.
+
+### Tests
+- Backfilled unit tests for `filterAuthorChain` (edge cases), `filterAuthorOnly`, and `addThreadMetadata` (all 4 `threadPosition` values).
+- Added integration tests for all thread filter flags, conflict warnings, and focal-tweet-not-found edge case.
+- Added help output test verifying new flags appear in `bird thread --help`.
+
 ## 0.8.0 — 2026-01-19
 
 ### Added

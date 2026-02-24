@@ -109,6 +109,8 @@ describe('addThreadMetadata', () => {
     const result = addThreadMetadata(root, [root, reply]);
     expect(result.threadPosition).toBe('root');
     expect(result.isThread).toBe(true);
+    expect(result.hasSelfReplies).toBe(true);
+    expect(result.threadRootId).toBe('1');
   });
 
   it('labels a root tweet without self-replies as "standalone"', () => {
@@ -117,6 +119,7 @@ describe('addThreadMetadata', () => {
     const result = addThreadMetadata(root, [root, otherReply]);
     expect(result.threadPosition).toBe('standalone');
     expect(result.isThread).toBe(false);
+    expect(result.hasSelfReplies).toBe(false);
   });
 
   it('labels a mid-thread tweet with self-replies as "middle"', () => {
@@ -126,6 +129,7 @@ describe('addThreadMetadata', () => {
     const result = addThreadMetadata(mid, [root, mid, end]);
     expect(result.threadPosition).toBe('middle');
     expect(result.isThread).toBe(true);
+    expect(result.hasSelfReplies).toBe(true);
   });
 
   it('labels an end-of-chain tweet as "end"', () => {
@@ -134,6 +138,15 @@ describe('addThreadMetadata', () => {
     const result = addThreadMetadata(end, [root, end]);
     expect(result.threadPosition).toBe('end');
     expect(result.isThread).toBe(true);
+    expect(result.hasSelfReplies).toBe(false);
+  });
+
+  it('only considers self-replies from the same author', () => {
+    const root = makeTweet('1', '2020-01-01T00:00:00Z', undefined, '1', alice);
+    const bobReply = makeTweet('2', '2020-01-02T00:00:00Z', '1', '1', bob); // bob replies, not self-reply
+    const result = addThreadMetadata(root, [root, bobReply]);
+    expect(result.threadPosition).toBe('standalone');
+    expect(result.hasSelfReplies).toBe(false);
   });
 });
 
@@ -166,54 +179,5 @@ describe('filterFullChain', () => {
 
     const result = filterFullChain(tweets, bookmark, { includeAncestorBranches: true });
     expect(result.map((tweet) => tweet.id)).toEqual(['1', '2', '3', '4', '7', '5', '6']);
-  });
-});
-
-describe('addThreadMetadata', () => {
-  it('marks root with self-replies as "root"', () => {
-    const tweets = [makeTweet('1', '2020-01-01T00:00:00Z'), makeTweet('2', '2020-01-02T00:00:00Z', '1')];
-    const result = addThreadMetadata(tweets[0], tweets);
-    expect(result.threadPosition).toBe('root');
-    expect(result.isThread).toBe(true);
-    expect(result.hasSelfReplies).toBe(true);
-    expect(result.threadRootId).toBe('1');
-  });
-
-  it('marks standalone tweet (root, no self-replies) as "standalone"', () => {
-    const tweets = [makeTweet('1', '2020-01-01T00:00:00Z')];
-    const result = addThreadMetadata(tweets[0], tweets);
-    expect(result.threadPosition).toBe('standalone');
-    expect(result.isThread).toBe(false);
-    expect(result.hasSelfReplies).toBe(false);
-  });
-
-  it('marks mid-thread tweet with self-replies as "middle"', () => {
-    const tweets = [
-      makeTweet('1', '2020-01-01T00:00:00Z'),
-      makeTweet('2', '2020-01-02T00:00:00Z', '1'),
-      makeTweet('3', '2020-01-03T00:00:00Z', '2'),
-    ];
-    const result = addThreadMetadata(tweets[1], tweets);
-    expect(result.threadPosition).toBe('middle');
-    expect(result.isThread).toBe(true);
-    expect(result.hasSelfReplies).toBe(true);
-  });
-
-  it('marks end of chain (no self-replies) as "end"', () => {
-    const tweets = [makeTweet('1', '2020-01-01T00:00:00Z'), makeTweet('2', '2020-01-02T00:00:00Z', '1')];
-    const result = addThreadMetadata(tweets[1], tweets);
-    expect(result.threadPosition).toBe('end');
-    expect(result.isThread).toBe(true);
-    expect(result.hasSelfReplies).toBe(false);
-  });
-
-  it('only considers self-replies from the same author', () => {
-    const tweets = [
-      makeTweet('1', '2020-01-01T00:00:00Z'),
-      makeTweet('2', '2020-01-02T00:00:00Z', '1', '1', 'bob'), // bob replies, not self-reply
-    ];
-    const result = addThreadMetadata(tweets[0], tweets);
-    expect(result.threadPosition).toBe('standalone');
-    expect(result.hasSelfReplies).toBe(false);
   });
 });

@@ -1,2 +1,7 @@
-onlyBuiltDependencies:
-  - esbuild
+allowBuilds:
+  esbuild: true
+
+autoInstallPeers: false
+
+patchedDependencies:
+  '@steipete/sweet-cookie': patches/@steipete__sweet-cookie.patch

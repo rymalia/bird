@@ -4,7 +4,14 @@ import type { CliContext } from '../cli/shared.js';
 import { formatStatsLine } from '../lib/output.js';
 import { addThreadMetadata, filterAuthorChain, filterAuthorOnly, filterFullChain } from '../lib/thread-filters.js';
 import { TwitterClient } from '../lib/twitter-client.js';
-import type { TweetData, TweetWithMeta } from '../lib/twitter-client-types.js';
+import type { TweetData, TweetReadFailure, TweetWithMeta } from '../lib/twitter-client-types.js';
+
+// Machine-readable failure for `read --json`: one JSON document on stdout, so callers can
+// tell a deleted tweet from a rate limit without parsing stderr.
+function printReadFailureJson(failure: TweetReadFailure): void {
+  const { kind, reason, status, message } = failure;
+  console.log(JSON.stringify({ error: { kind, reason: reason ?? null, status: status ?? null, message } }, null, 2));
+}
 
 export function registerReadCommands(program: Command, ctx: CliContext): void {
   program
@@ -20,6 +27,7 @@ export function registerReadCommands(program: Command, ctx: CliContext): void {
 
       const tweetId = ctx.extractTweetId(tweetIdOrUrl);
 
+      const isJson = Boolean(cmdOpts.json || cmdOpts.jsonFull);
       const { cookies, warnings } = await ctx.resolveCredentialsFromOptions(opts);
 
       for (const warning of warnings) {
@@ -28,6 +36,9 @@ export function registerReadCommands(program: Command, ctx: CliContext): void {
 
       if (!cookies.authToken || !cookies.ct0) {
         console.error(`${ctx.p('err')}Missing required credentials`);
+        if (isJson) {
+          printReadFailureJson({ kind: 'auth', reason: 'MissingCredentials', message: 'Missing required credentials' });
+        }
         process.exit(1);
       }
 
@@ -36,7 +47,7 @@ export function registerReadCommands(program: Command, ctx: CliContext): void {
       const result = await client.getTweet(tweetId, { includeRaw });
 
       if (result.success && result.tweet) {
-        if (cmdOpts.json || cmdOpts.jsonFull) {
+        if (isJson) {
           console.log(JSON.stringify(result.tweet, null, 2));
         } else {
           ctx.printTweets([result.tweet], { showSeparator: false });
@@ -44,6 +55,9 @@ export function registerReadCommands(program: Command, ctx: CliContext): void {
         }
       } else {
         console.error(`${ctx.p('err')}Failed to read tweet: ${result.error}`);
+        if (isJson) {
+          printReadFailureJson(result.failure ?? { kind: 'transient', message: result.error ?? 'Unknown error' });
+        }
         process.exit(1);
       }
     });

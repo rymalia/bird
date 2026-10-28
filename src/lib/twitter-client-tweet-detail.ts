@@ -1,8 +1,21 @@
 import { paginateCursor } from './paginate-cursor.js';
+import {
+  classifyGraphqlErrors,
+  classifyHttpFailure,
+  classifyMissingTweet,
+  classifyThrownError,
+  findFocalTweetEntry,
+} from './tweet-read-failure.js';
 import type { AbstractConstructor, Mixin, TwitterClientBase } from './twitter-client-base.js';
 import { TWITTER_API_BASE } from './twitter-client-constants.js';
 import { buildArticleFeatures, buildArticleFieldToggles, buildTweetDetailFeatures } from './twitter-client-features.js';
-import type { GetTweetResult, GraphqlTweetResult, SearchResult, TweetData } from './twitter-client-types.js';
+import type {
+  GetTweetResult,
+  GraphqlTweetResult,
+  SearchResult,
+  TweetData,
+  TweetReadFailure,
+} from './twitter-client-types.js';
 import {
   extractArticleText,
   extractCursorFromInstructions,
@@ -10,6 +23,7 @@ import {
   firstText,
   mapTweetResult,
   parseTweetsFromInstructions,
+  unwrapTweetResult,
 } from './twitter-client-utils.js';
 
 /** Options for tweet fetching methods */
@@ -130,6 +144,8 @@ export function withTweetDetails<TBase extends AbstractConstructor<TwitterClient
     ): Promise<
       | {
           success: true;
+          /** GraphQL errors X returned alongside usable data */
+          partialErrors?: Array<{ message: string; code?: number }>;
           data: {
             tweetResult?: { result?: GraphqlTweetResult };
             threaded_conversation_with_injections_v2?: {
@@ -147,7 +163,7 @@ export function withTweetDetails<TBase extends AbstractConstructor<TwitterClient
             };
           };
         }
-      | { success: false; error: string }
+      | { success: false; error: string; failure: TweetReadFailure }
     > {
       const variables = {
         focalTweetId: tweetId,
@@ -192,7 +208,8 @@ export function withTweetDetails<TBase extends AbstractConstructor<TwitterClient
         const parseResponse = async (response: Response) => {
           if (!response.ok) {
             const text = await response.text();
-            return { success: false as const, error: `HTTP ${response.status}: ${text.slice(0, 200)}` };
+            const failure = classifyHttpFailure(response.status, text);
+            return { success: false as const, error: failure.message, failure };
           }
 
           const data = (await response.json()) as {
@@ -223,14 +240,16 @@ export function withTweetDetails<TBase extends AbstractConstructor<TwitterClient
                 data.data?.threaded_conversation_with_injections_v2?.instructions?.length,
             );
             if (!hasUsableData) {
-              return { success: false as const, error: data.errors.map((e) => e.message).join(', ') };
+              const failure = classifyGraphqlErrors(data.errors);
+              return { success: false as const, error: failure.message, failure };
             }
           }
 
-          return { success: true as const, data: data.data ?? {} };
+          const partialErrors = data.errors?.length ? data.errors : undefined;
+          return { success: true as const, data: data.data ?? {}, ...(partialErrors ? { partialErrors } : {}) };
         };
 
-        let lastError: string | undefined;
+        let lastFailure: TweetReadFailure | undefined;
         let had404 = false;
 
         const tryOnce = async () => {
@@ -259,10 +278,14 @@ export function withTweetDetails<TBase extends AbstractConstructor<TwitterClient
               return await parseResponse(postResponse);
             }
 
-            lastError = 'HTTP 404';
+            lastFailure = classifyHttpFailure(404, '');
           }
 
-          return { success: false as const, error: lastError ?? 'Unknown error fetching tweet detail' };
+          const failure: TweetReadFailure = lastFailure ?? {
+            kind: 'transient',
+            message: 'Unknown error fetching tweet detail',
+          };
+          return { success: false as const, error: failure.message, failure };
         };
 
         const firstAttempt = await tryOnce();
@@ -277,7 +300,8 @@ export function withTweetDetails<TBase extends AbstractConstructor<TwitterClient
 
         return firstAttempt;
       } catch (error) {
-        return { success: false, error: error instanceof Error ? error.message : String(error) };
+        const failure = classifyThrownError(error);
+        return { success: false, error: failure.message, failure };
       }
     }
 
@@ -291,27 +315,17 @@ export function withTweetDetails<TBase extends AbstractConstructor<TwitterClient
         return response;
       }
 
-      const tweetResult =
-        (response.data.tweetResult as { result?: GraphqlTweetResult } | undefined)?.result ??
-        findTweetInInstructions(
-          response.data.threaded_conversation_with_injections_v2?.instructions as
-            | Array<{
-                entries?: Array<{
-                  content?: {
-                    itemContent?: {
-                      tweet_results?: {
-                        result?: GraphqlTweetResult;
-                      };
-                    };
-                  };
-                }>;
-              }>
-            | undefined,
-          tweetId,
-        );
+      const instructions = response.data.threaded_conversation_with_injections_v2?.instructions;
+      const rootResult = unwrapTweetResult(
+        (response.data.tweetResult as { result?: GraphqlTweetResult } | undefined)?.result,
+      );
+      const focalEntry = rootResult ? undefined : findFocalTweetEntry(instructions, tweetId);
+      const focalResult = rootResult ?? findTweetInInstructions(instructions, tweetId);
+      // Fall back to the focal entry so visibility-wrapped tweets (rest_id on .tweet) still map.
+      const tweetResult = focalResult ?? unwrapTweetResult(focalEntry?.content?.itemContent?.tweet_results?.result);
 
       const mapped = mapTweetResult(tweetResult, { quoteDepth: this.quoteDepth, includeRaw });
-      if (mapped) {
+      if (mapped && (focalResult || mapped.id === tweetId)) {
         if (tweetResult?.article) {
           const title = firstText(tweetResult.article.article_results?.result?.title, tweetResult.article.title);
           const articleText = extractArticleText(tweetResult);
@@ -327,7 +341,12 @@ export function withTweetDetails<TBase extends AbstractConstructor<TwitterClient
         }
         return { success: true, tweet: mapped };
       }
-      return { success: false, error: 'Tweet not found in response' };
+      let failure = classifyMissingTweet(tweetResult, Boolean(rootResult || focalEntry));
+      // An empty focal slot only means "deleted" in a clean response; with errors it may be X failing.
+      if (failure.kind === 'not_found' && response.partialErrors) {
+        failure = classifyGraphqlErrors(response.partialErrors);
+      }
+      return { success: false, error: failure.message, failure };
     }
 
     /**

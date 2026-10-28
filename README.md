@@ -297,6 +297,23 @@ When using `--json`, tweet objects include:
 | `inReplyToStatusId` | string? | Parent tweet ID (present if this is a reply) |
 | `quotedTweet` | object? | Embedded quote tweet (same schema; depth controlled by `--quote-depth`) |
 
+When `read --json` or `read --json-full` fails, stdout carries one error object (stderr keeps the human message) and the exit code is 1:
+
+```json
+{ "error": { "kind": "unavailable", "reason": "Suspended", "status": null, "message": "This Post is from a suspended account." } }
+```
+
+| `kind` | Meaning | Retry? |
+|--------|---------|--------|
+| `not_found` | X says the tweet does not exist (deleted, or never existed) | No |
+| `unavailable` | It exists but this account can't see it; `reason` is `Suspended`, `Protected`, `Withheld`, or X's own label | No |
+| `rate_limited` | HTTP 429 or error code 88 | Later |
+| `transient` | 5xx, timeout, network error, stale query ID (endpoint 404), 403 with a non-auth code, other GraphQL errors | Yes |
+| `parse` | The response had an unexpected shape | Yes |
+| `auth` | Missing, expired or rejected credentials (401, auth error codes, or a 403 without a code); every later request will fail too | Fix credentials |
+
+`not_found` is reported only on an explicit verdict from X; anything ambiguous falls into a retryable kind.
+
 When using `--json` with `following`/`followers`, user objects include:
 
 | Field | Type | Description |

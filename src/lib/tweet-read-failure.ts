@@ -37,7 +37,8 @@ function parseErrorCodes(body: string): number[] {
 
 /** Classify a non-2xx TweetDetail response. A 404 here is the endpoint (stale query id), not the tweet. */
 export function classifyHttpFailure(status: number, body: string): TweetReadFailure {
-  const message = body ? `HTTP ${status}: ${body.slice(0, 200)}` : `HTTP ${status}`;
+  const trimmed = body.trim();
+  const message = trimmed ? `HTTP ${status}: ${trimmed.slice(0, 200)}` : `HTTP ${status}`;
   if (status === 429) {
     return { kind: 'rate_limited', status, message };
   }
@@ -45,9 +46,13 @@ export function classifyHttpFailure(status: number, body: string): TweetReadFail
     return { kind: 'auth', status, message };
   }
   if (status === 403) {
-    // Any other 403 (bot checks included) will repeat on every request, so stop rather than retry.
-    const kind = parseErrorCodes(body).includes(RATE_LIMIT_ERROR_CODE) ? 'rate_limited' : 'auth';
-    return { kind, status, message };
+    // A 403 with no code is almost always a rejected session; a non-auth code may be per-tweet, so retry it.
+    const codes = parseErrorCodes(body);
+    if (codes.includes(RATE_LIMIT_ERROR_CODE)) {
+      return { kind: 'rate_limited', status, message };
+    }
+    const isAuth = codes.length === 0 || codes.some((code) => AUTH_ERROR_CODES.has(code));
+    return { kind: isAuth ? 'auth' : 'transient', status, message };
   }
   if (status === 404) {
     return { kind: 'transient', reason: 'QueryIdNotFound', status, message };
@@ -88,6 +93,24 @@ export function classifyThrownError(error: unknown): TweetReadFailure {
   return { kind: 'transient', reason: 'Network', message };
 }
 
+/** True if any object anywhere in the response carries this tweet's rest_id (modules included). */
+export function responseMentionsTweet(data: unknown, tweetId: string): boolean {
+  const stack: unknown[] = [data];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (Array.isArray(node)) {
+      stack.push(...node);
+    } else if (node && typeof node === 'object') {
+      const record = node as Record<string, unknown>;
+      if (record.rest_id === tweetId) {
+        return true;
+      }
+      stack.push(...Object.values(record));
+    }
+  }
+  return false;
+}
+
 /** Find the focal tweet's timeline entry. Tombstones carry no rest_id, so match on entryId first. */
 export function findFocalTweetEntry(
   instructions: Array<{ entries?: TimelineEntry[] }> | undefined,
@@ -104,7 +127,10 @@ export function findFocalTweetEntry(
 }
 
 function classifyTombstone(text: string): TweetReadFailure {
-  const message = text.replace(LEARN_MORE_SUFFIX, '').trim() || 'Tweet is unavailable';
+  const message = text.replace(LEARN_MORE_SUFFIX, '').trim();
+  if (!message) {
+    return { kind: 'parse', message: 'Tombstone without text' };
+  }
   if (SUSPENDED_TOMBSTONE.test(text)) {
     return { kind: 'unavailable', reason: 'Suspended', message };
   }

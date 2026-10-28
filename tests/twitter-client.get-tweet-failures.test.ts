@@ -197,6 +197,32 @@ describe('TwitterClient getTweet failure classification', () => {
       expect((await read()).failure).toMatchObject({ kind: 'rate_limited', status: 403 });
     });
 
+    it('does not report not_found when the tweet sits in a conversation module', async () => {
+      const module = {
+        entryId: 'conversationthread-1',
+        content: {
+          __typename: 'TimelineTimelineModule',
+          items: [{ item: { itemContent: { tweet_results: { result: { rest_id: FOCAL_ID, legacy: {} } } } } }],
+        },
+      };
+      mockFetch.mockResolvedValueOnce(jsonResponse(conversation([focalEntry({}), module])));
+
+      expect((await read()).failure).toMatchObject({ kind: 'parse' });
+    });
+
+    it('classifies a tombstone without text as parse', async () => {
+      const tombstone = { __typename: 'TweetTombstone', tombstone: {} };
+      mockFetch.mockResolvedValueOnce(jsonResponse(conversation([focalEntry({ result: tombstone })])));
+
+      expect((await read()).failure).toMatchObject({ kind: 'parse' });
+    });
+
+    it('trims the response body in HTTP failure messages', async () => {
+      mockFetch.mockResolvedValueOnce(httpError(401, '{"errors":[{"code":32}]}\n'));
+
+      expect((await read()).failure?.message).toBe('HTTP 401: {"errors":[{"code":32}]}');
+    });
+
     it('classifies a locked account (code 326) as auth', async () => {
       mockFetch.mockResolvedValueOnce(
         jsonResponse({ errors: [{ message: 'Account is temporarily locked', code: 326 }] }),
@@ -225,6 +251,18 @@ describe('TwitterClient getTweet failure classification', () => {
       );
 
       expect((await read()).failure).toMatchObject({ kind: 'auth', status: 401 });
+    });
+
+    it('classifies a 403 with a non-auth code as transient', async () => {
+      mockFetch.mockResolvedValueOnce(httpError(403, '{"errors":[{"message":"Automated request","code":226}]}'));
+
+      expect((await read()).failure).toMatchObject({ kind: 'transient', status: 403 });
+    });
+
+    it('classifies a 403 without an error code as auth', async () => {
+      mockFetch.mockResolvedValueOnce(httpError(403, 'Forbidden'));
+
+      expect((await read()).failure).toMatchObject({ kind: 'auth', status: 403 });
     });
 
     it('classifies HTTP 403 as auth', async () => {

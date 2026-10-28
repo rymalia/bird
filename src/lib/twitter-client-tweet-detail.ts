@@ -5,6 +5,7 @@ import {
   classifyMissingTweet,
   classifyThrownError,
   findFocalTweetEntry,
+  responseMentionsTweet,
 } from './tweet-read-failure.js';
 import type { AbstractConstructor, Mixin, TwitterClientBase } from './twitter-client-base.js';
 import { TWITTER_API_BASE } from './twitter-client-constants.js';
@@ -342,9 +343,12 @@ export function withTweetDetails<TBase extends AbstractConstructor<TwitterClient
         return { success: true, tweet: mapped };
       }
       let failure = classifyMissingTweet(tweetResult, Boolean(rootResult || focalEntry));
-      // An empty focal slot only means "deleted" in a clean response; with errors it may be X failing.
+      // not_found must be unambiguous: with GraphQL errors X may be failing, and if the tweet's id
+      // appears anywhere else in the response it exists in a shape we could not map.
       if (failure.kind === 'not_found' && response.partialErrors) {
         failure = classifyGraphqlErrors(response.partialErrors);
+      } else if (failure.kind === 'not_found' && responseMentionsTweet(response.data, tweetId)) {
+        failure = { kind: 'parse', message: 'Tweet present in response but could not be parsed' };
       }
       return { success: false, error: failure.message, failure };
     }

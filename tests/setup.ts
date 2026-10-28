@@ -1,0 +1,1 @@
+process.env.BIRD_QUERY_IDS_AUTO_REFRESH = '0';

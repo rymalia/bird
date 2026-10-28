@@ -26,6 +26,8 @@ export type { TweetFetchOptions } from './twitter-client-tweet-detail.js';
 export type {
   AboutAccountProfile,
   AboutAccountResult,
+  TweetReadFailure,
+  TweetReadFailureKind,
   TweetResult,
   UploadMediaResult,
 } from './twitter-client-types.js';

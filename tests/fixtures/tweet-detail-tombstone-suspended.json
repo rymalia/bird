@@ -1,0 +1,79 @@
+{
+  "data": {
+    "threaded_conversation_with_injections_v2": {
+      "instructions": [
+        {
+          "type": "TimelineClearCache"
+        },
+        {
+          "entries": [
+            {
+              "content": {
+                "__typename": "TimelineTimelineItem",
+                "clientEventInfo": {
+                  "component": "tweet",
+                  "element": "tweet"
+                },
+                "entryType": "TimelineTimelineItem",
+                "itemContent": {
+                  "__typename": "TimelineTweet",
+                  "itemType": "TimelineTweet",
+                  "tweetDisplayType": "Tweet",
+                  "tweet_results": {
+                    "result": {
+                      "__typename": "TweetTombstone",
+                      "tombstone": {
+                        "__typename": "TextTombstone",
+                        "text": {
+                          "entities": [
+                            {
+                              "fromIndex": 39,
+                              "ref": {
+                                "type": "TimelineUrl",
+                                "url": "https://help.x.com/rules-and-policies/notices-on-x",
+                                "urlType": "ExternalUrl"
+                              },
+                              "toIndex": 49
+                            }
+                          ],
+                          "rtl": false,
+                          "text": "This Post is from a suspended account. Learn more"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "entryId": "tweet-1000000000000000001",
+              "sortIndex": "1"
+            },
+            {
+              "content": {
+                "__typename": "TimelineTimelineCursor",
+                "cursorType": "Bottom",
+                "entryType": "TimelineTimelineCursor",
+                "value": "CURSOR"
+              },
+              "entryId": "cursor-bottom-1",
+              "sortIndex": "1"
+            }
+          ],
+          "type": "TimelineAddEntries"
+        },
+        {
+          "direction": "Top",
+          "type": "TimelineTerminateTimeline"
+        },
+        {
+          "direction": "Bottom",
+          "type": "TimelineTerminateTimeline"
+        }
+      ],
+      "metadata": {
+        "scribeConfig": {
+          "page": "ranked_replies"
+        }
+      }
+    }
+  }
+}

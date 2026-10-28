@@ -293,10 +293,29 @@ export interface TweetWithMeta extends TweetData {
   threadRootId: string | null;
 }
 
+/**
+ * Why a tweet read failed.
+ * - not_found: X says the tweet does not exist (deleted, or never existed)
+ * - unavailable: it exists but this account cannot see it (suspended, protected, withheld)
+ * - rate_limited / transient / parse: retryable; says nothing about the tweet itself
+ * - auth: credential problem; every following request will fail too
+ */
+export type TweetReadFailureKind = 'not_found' | 'unavailable' | 'rate_limited' | 'auth' | 'transient' | 'parse';
+
+export interface TweetReadFailure {
+  kind: TweetReadFailureKind;
+  /** X's own label where one exists (e.g. Suspended, Protected), else a short bird label */
+  reason?: string;
+  /** HTTP status of the failing response, when the failure came from one */
+  status?: number;
+  message: string;
+}
+
 export interface GetTweetResult {
   success: boolean;
   tweet?: TweetData;
   error?: string;
+  failure?: TweetReadFailure;
 }
 
 export type SearchResult =

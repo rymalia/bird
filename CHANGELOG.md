@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- `read --json`/`--json-full` now print a machine-readable error on failure: `{"error": {"kind", "reason", "status", "message"}}` on stdout, exit code 1. `kind` is one of `not_found`, `unavailable`, `rate_limited`, `auth`, `transient`, `parse`, so callers can tell a deleted tweet from a suspended author, a rate limit or expired cookies. The library's `getTweet()` returns the same data as `failure`; the `TweetReadFailure` and `TweetReadFailureKind` types are exported.
+
+### Fixed
+- `read` no longer reports suspended-account and protected-account tombstones as "Tweet not found in response"; the message now carries X's own tombstone text.
+- `read` now maps a focal tweet wrapped in `TweetWithVisibilityResults` instead of failing as not found.
+
 ## 0.8.1 — 2026-02-24
 
 ### Added

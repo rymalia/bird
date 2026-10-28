@@ -1,0 +1,12 @@
+{
+  "data": {},
+  "errors": [
+    {
+      "message": "strconv.ParseInt: parsing \"9999999999999999999\": value out of range",
+      "path": [
+        "threaded_conversation_with_injections_v2",
+        "focal_tweet_id"
+      ]
+    }
+  ]
+}

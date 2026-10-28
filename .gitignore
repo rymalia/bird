@@ -23,3 +23,6 @@ bird
 
 # Local scratch fixtures
 temp/
+
+# Agent handoff notes (local scratch)
+.baton/

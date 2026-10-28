@@ -316,3 +316,98 @@ describe('thread command filter flags', () => {
     }
   });
 });
+
+describe('read command failures', () => {
+  const createMockContext = (cookies = { authToken: 'auth', ct0: 'ct0', cookieHeader: 'auth=auth; ct0=ct0' }) =>
+    ({
+      resolveTimeoutFromOptions: () => undefined,
+      resolveQuoteDepthFromOptions: () => 1,
+      extractTweetId: (input: string) => input,
+      resolveCredentialsFromOptions: async () => ({ cookies, warnings: [] }),
+      p: () => '',
+      printTweets: () => undefined,
+    }) as unknown as CliContext;
+
+  const runRead = async (args: string[], ctx = createMockContext()) => {
+    const program = new Command();
+    registerReadCommands(program, ctx);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`exit ${code}`);
+    }) as never);
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      await expect(program.parseAsync(['node', 'bird', 'read', ...args])).rejects.toThrow('exit 1');
+      return {
+        stdout: logSpy.mock.calls.map((call) => String(call[0])),
+        stderr: errorSpy.mock.calls.map((call) => String(call[0])),
+      };
+    } finally {
+      exitSpy.mockRestore();
+      logSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  };
+
+  const failure = {
+    kind: 'unavailable' as const,
+    reason: 'Suspended',
+    message: 'This Post is from a suspended account.',
+  };
+
+  it.each([['--json'], ['--json-full']])('prints a JSON error object on stdout with %s', async (flag) => {
+    const spy = vi
+      .spyOn(TwitterClient.prototype, 'getTweet')
+      .mockResolvedValue({ success: false, error: failure.message, failure });
+
+    try {
+      const { stdout, stderr } = await runRead(['123', flag]);
+      expect(stdout).toHaveLength(1);
+      expect(JSON.parse(stdout[0])).toEqual({
+        error: { kind: 'unavailable', reason: 'Suspended', status: null, message: failure.message },
+      });
+      expect(stderr).toContain(`Failed to read tweet: ${failure.message}`);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('keeps stdout empty without a JSON flag', async () => {
+    const spy = vi
+      .spyOn(TwitterClient.prototype, 'getTweet')
+      .mockResolvedValue({ success: false, error: failure.message, failure });
+
+    try {
+      const { stdout, stderr } = await runRead(['123']);
+      expect(stdout).toEqual([]);
+      expect(stderr).toContain(`Failed to read tweet: ${failure.message}`);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('falls back to transient when a failure has no classification', async () => {
+    const spy = vi.spyOn(TwitterClient.prototype, 'getTweet').mockResolvedValue({ success: false, error: 'boom' });
+
+    try {
+      const { stdout } = await runRead(['123', '--json']);
+      expect(JSON.parse(stdout[0])).toEqual({
+        error: { kind: 'transient', reason: null, status: null, message: 'boom' },
+      });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('reports missing credentials as an auth error', async () => {
+    const { stdout, stderr } = await runRead(
+      ['123', '--json'],
+      createMockContext({ authToken: '', ct0: '', cookieHeader: '' }),
+    );
+
+    expect(JSON.parse(stdout[0])).toEqual({
+      error: { kind: 'auth', reason: 'MissingCredentials', status: null, message: 'Missing required credentials' },
+    });
+    expect(stderr).toContain('Missing required credentials');
+  });
+});

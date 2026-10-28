@@ -6,6 +6,7 @@ import {
   refreshFeatureOverridesCache,
 } from '../lib/runtime-features.js';
 import { runtimeQueryIds } from '../lib/runtime-query-ids.js';
+import { TARGET_QUERY_ID_OPERATIONS } from '../lib/twitter-client-constants.js';
 
 function countFeatureOverrides(overrides: FeatureOverrides): number {
   let count = 0;
@@ -42,7 +43,43 @@ export function registerQueryIdsCommand(program: Command, ctx: CliContext): void
 
       if (cmdOpts.fresh) {
         console.error(`${ctx.p('info')}Refreshing GraphQL query IDs…`);
-        await runtimeQueryIds.refresh(operations, { force: true });
+        let cookieHeader: string | undefined;
+        try {
+          const opts = program.opts();
+          const { cookies } = await ctx.resolveCredentialsFromOptions(opts);
+          cookieHeader = cookies.cookieHeader ?? undefined;
+        } catch {
+          // Anonymous discovery remains available.
+        }
+        if (!cookieHeader) {
+          console.error(`${ctx.p('warn')}Credentials unavailable; trying anonymous discovery.`);
+        }
+        try {
+          const targets = [...new Set([...operations, ...TARGET_QUERY_ID_OPERATIONS])];
+          const before = await runtimeQueryIds.getSnapshotInfo();
+          const refreshed = await runtimeQueryIds.refresh(targets, {
+            force: true,
+            cookieHeader,
+          });
+          const found =
+            refreshed?.snapshot.fetchedAt !== before?.snapshot.fetchedAt
+              ? (refreshed?.snapshot.discovery.foundOperations?.length ?? 0)
+              : 0;
+          console.error(`${ctx.p('info')}Found ${found}/${targets.length} operations.`);
+          if (found === 0) {
+            console.error(`${ctx.p('warn')}No query IDs were discovered; existing cache was left unchanged.`);
+            process.exitCode = 1;
+          }
+        } catch (error) {
+          console.error(
+            `${ctx.p('err')}Query ID refresh failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          console.error(
+            `${ctx.p('info')}Found 0/${new Set([...operations, ...TARGET_QUERY_ID_OPERATIONS]).size} operations.`,
+          );
+          console.error(`${ctx.p('warn')}Existing query ID cache was left unchanged.`);
+          process.exitCode = 1;
+        }
         console.error(`${ctx.p('info')}Refreshing feature overrides…`);
         await refreshFeatureOverridesCache();
       }

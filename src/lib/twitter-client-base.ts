@@ -46,6 +46,10 @@ export abstract class TwitterClientBase {
   }
 
   protected async getQueryId(operationName: OperationName): Promise<string> {
+    const info = await runtimeQueryIds.getSnapshotInfo();
+    if (!info || !info.isFresh) {
+      await runtimeQueryIds.autoRefresh(TARGET_QUERY_ID_OPERATIONS, this.cookieHeader);
+    }
     const cached = await runtimeQueryIds.getQueryId(operationName);
     return cached ?? QUERY_IDS[operationName];
   }
@@ -55,7 +59,7 @@ export abstract class TwitterClientBase {
       return;
     }
     try {
-      await runtimeQueryIds.refresh(TARGET_QUERY_ID_OPERATIONS, { force: true });
+      await runtimeQueryIds.refresh(TARGET_QUERY_ID_OPERATIONS, { force: true, cookieHeader: this.cookieHeader });
     } catch {
       // ignore refresh failures; callers will fall back to baked-in IDs
     }

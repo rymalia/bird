@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.0 — 2026-10-29
 
 ### Added
 - `bookmarks` output now includes `bookmarkedAt`, the UTC timestamp when each tweet was saved.
@@ -10,6 +10,12 @@
 ### Fixed
 - `read` no longer reports suspended-account and protected-account tombstones as "Tweet not found in response"; the message now carries X's own tombstone text.
 - `read` now maps a focal tweet wrapped in `TweetWithVisibilityResults` instead of failing as not found.
+- GraphQL query-ID discovery works again. X's logged-out pages now serve a Relay client whose operations bird can't use, so discovery now reads the logged-in `x.com/home` client and its lazy chunks (anonymous discovery stays as a fallback), and `bird query-ids --fresh` no longer crashes; it now exits 1 when discovery finds nothing or fails, and `query-ids --json` reports the discovered operations in `discovery.foundOperations`. Discovered IDs merge over the cached snapshot instead of replacing it.
+- The 24-hour query-ID cache TTL is now enforced: a missing or stale cache triggers one refresh, guarded by a cross-process lock and a 1h/6h/24h backoff after failures. Opt out with `BIRD_QUERY_IDS_AUTO_REFRESH=0`.
+- Refreshed the baked-in query IDs (13 changed, 3 added).
+
+### Build
+- pnpm settings moved from `package.json` and `.npmrc` to `pnpm-workspace.yaml`, so `pnpm run` works on pnpm 11+ and installs keep the sweet-cookie patch.
 
 ## 0.8.1 — 2026-02-24
 

@@ -296,6 +296,8 @@ When using `--json`, tweet objects include:
 | `likeCount` | number | Number of likes |
 | `conversationId` | string | Thread conversation ID |
 | `inReplyToStatusId` | string? | Parent tweet ID (present if this is a reply) |
+| `lang` | string? | X's detected language (`en`, `zh`, …; `und`, `zxx` or `qme` when there is none) |
+| `isTranslatable` | boolean? | Whether X offers your account a Translate button (relative to your account's language) |
 | `quotedTweet` | object? | Embedded quote tweet (same schema; depth controlled by `--quote-depth`) |
 
 When `read --json` or `read --json-full` fails, stdout carries one error object (stderr keeps the human message) and the exit code is 1:

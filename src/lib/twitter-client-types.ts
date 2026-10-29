@@ -26,6 +26,7 @@ export interface GraphqlMediaEntity {
 export type GraphqlTweetResult = {
   __typename?: string;
   rest_id?: string;
+  is_translatable?: boolean;
   legacy?: {
     full_text?: string;
     created_at?: string;
@@ -34,6 +35,7 @@ export type GraphqlTweetResult = {
     favorite_count?: number;
     conversation_id_str?: string;
     in_reply_to_status_id_str?: string | null;
+    lang?: string;
     entities?: {
       media?: GraphqlMediaEntity[];
     };
@@ -275,6 +277,10 @@ export interface TweetData {
   likeCount?: number;
   conversationId?: string;
   inReplyToStatusId?: string;
+  // X's detected language: a BCP 47 code such as "en" or "zh", or "und", "zxx", "qme" for none.
+  lang?: string;
+  // Whether X offers the logged-in account a Translate button; false for its own language.
+  isTranslatable?: boolean;
   // Optional quoted tweet; depth controlled by quoteDepth (default: 1).
   quotedTweet?: TweetData;
   // Media attachments (photos, videos, GIFs)

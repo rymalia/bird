@@ -4,6 +4,7 @@
 
 ### Added
 - `bookmarks` output now includes `bookmarkedAt`, the UTC timestamp when each tweet was saved.
+- Tweet output now includes `lang` (X's detected language) and `isTranslatable` (whether X offers the logged-in account a translation), on every command and on quoted tweets.
 - `read --json`/`--json-full` now print a machine-readable error on failure: `{"error": {"kind", "reason", "status", "message"}}` on stdout, exit code 1. `kind` is one of `not_found`, `unavailable`, `rate_limited`, `auth`, `transient`, `parse`, so callers can tell a deleted tweet from a suspended author, a rate limit or expired cookies. The library's `getTweet()` returns the same data as `failure`; the `TweetReadFailure` and `TweetReadFailureKind` types are exported.
 
 ### Fixed

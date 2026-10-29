@@ -227,7 +227,13 @@ export function registerBookmarksCommand(program: Command, ctx: CliContext): voi
           });
         }
 
-        const uniqueTweets = Array.from(new Map(finalResults.map((tweet) => [tweet.id, tweet])).values());
+        const byId = new Map<string, TweetData>();
+        for (const tweet of finalResults) {
+          // A bookmark can reappear as another bookmark's thread/parent context; keep its save time.
+          const bookmarkedAt = byId.get(tweet.id)?.bookmarkedAt ?? tweet.bookmarkedAt;
+          byId.set(tweet.id, bookmarkedAt ? { ...tweet, bookmarkedAt } : tweet);
+        }
+        const uniqueTweets = Array.from(byId.values());
         if (useChronologicalSort) {
           uniqueTweets.sort((a, b) => {
             const aTime = a.createdAt ? Date.parse(a.createdAt) : 0;

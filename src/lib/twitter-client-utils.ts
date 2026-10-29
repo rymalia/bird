@@ -746,7 +746,7 @@ export function parseTweetsFromInstructions(
   const { quoteDepth, includeRaw = false, includeBookmarkedAt = false } = options;
 
   const tweets: TweetData[] = [];
-  const seen = new Set<string>();
+  const seen = new Map<string, TweetData>();
 
   for (const instruction of instructions ?? []) {
     for (const entry of instruction.entries ?? []) {
@@ -754,13 +754,21 @@ export function parseTweetsFromInstructions(
       const bookmarkedAt = includeBookmarkedAt ? decodeBookmarkSortIndex(entry.sortIndex) : undefined;
       for (const result of results) {
         const mapped = mapTweetResult(result, { quoteDepth, includeRaw });
-        if (!mapped || seen.has(mapped.id)) {
+        if (!mapped) {
+          continue;
+        }
+        const existing = seen.get(mapped.id);
+        if (existing) {
+          // A later bookmark entry can carry the save time an earlier copy of this tweet lacked.
+          if (bookmarkedAt && !existing.bookmarkedAt) {
+            existing.bookmarkedAt = bookmarkedAt;
+          }
           continue;
         }
         if (bookmarkedAt) {
           mapped.bookmarkedAt = bookmarkedAt;
         }
-        seen.add(mapped.id);
+        seen.set(mapped.id, mapped);
         tweets.push(mapped);
       }
     }

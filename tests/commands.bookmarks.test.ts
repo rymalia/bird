@@ -87,6 +87,55 @@ describe('bookmarks command', () => {
     expect(printed.find((tweet) => tweet.id === 'reply')).not.toHaveProperty('bookmarkedAt');
   });
 
+  it('keeps a bookmark dated when another bookmark in its thread re-adds it as context', async () => {
+    const author = { username: 'alice', name: 'Alice' };
+    const root: TweetData = {
+      id: 'root',
+      text: 'saved root',
+      author,
+      conversationId: 'root',
+      bookmarkedAt: '2026-10-29T01:01:29.239Z',
+    };
+    const reply: TweetData = {
+      id: 'reply',
+      text: 'saved reply',
+      author,
+      conversationId: 'root',
+      inReplyToStatusId: 'root',
+      bookmarkedAt: '2026-10-29T01:01:45.650Z',
+    };
+    const undated = (tweet: TweetData): TweetData => {
+      const copy = { ...tweet };
+      delete copy.bookmarkedAt;
+      return copy;
+    };
+    const printTweetsResult = vi.fn();
+    const ctx = {
+      resolveTimeoutFromOptions: () => undefined,
+      resolveCredentialsFromOptions: async () => ({
+        cookies: { authToken: 'auth', ct0: 'ct0', cookieHeader: 'auth=auth; ct0=ct0' },
+        warnings: [],
+      }),
+      p: () => '',
+      printTweets: vi.fn(),
+      printTweetsResult,
+    } as unknown as CliContext;
+
+    vi.spyOn(TwitterClient.prototype, 'getBookmarks').mockResolvedValue({ success: true, tweets: [root, reply] });
+    vi.spyOn(TwitterClient.prototype, 'getThread').mockResolvedValue({
+      success: true,
+      tweets: [undated(root), undated(reply)],
+    });
+
+    const program = new Command();
+    registerBookmarksCommand(program, ctx);
+    await program.parseAsync(['node', 'bird', 'bookmarks', '--author-chain', '--json']);
+
+    const printed = printTweetsResult.mock.calls[0][0].tweets as TweetData[];
+    expect(printed.find((tweet) => tweet.id === 'root')?.bookmarkedAt).toBe(root.bookmarkedAt);
+    expect(printed.find((tweet) => tweet.id === 'reply')?.bookmarkedAt).toBe(reply.bookmarkedAt);
+  });
+
   it('does not mark a parent added by --include-parent as bookmarked', async () => {
     const bookmark: TweetData = {
       id: 'bookmark',

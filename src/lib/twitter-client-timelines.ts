@@ -323,6 +323,7 @@ export function withTimelines<TBase extends AbstractConstructor<TwitterClientBas
                   timeline?: {
                     instructions?: Array<{
                       entries?: Array<{
+                        sortIndex?: string;
                         content?: {
                           itemContent?: {
                             tweet_results?: {
@@ -339,7 +340,11 @@ export function withTimelines<TBase extends AbstractConstructor<TwitterClientBas
             };
 
             const instructions = data.data?.bookmark_timeline_v2?.timeline?.instructions;
-            const pageTweets = parseTweetsFromInstructions(instructions, { quoteDepth: this.quoteDepth, includeRaw });
+            const pageTweets = parseTweetsFromInstructions(instructions, {
+              quoteDepth: this.quoteDepth,
+              includeRaw,
+              includeBookmarkedAt: true,
+            });
             const nextCursor = extractCursorFromInstructions(instructions);
 
             if (data.errors && data.errors.length > 0) {
@@ -490,6 +495,7 @@ export function withTimelines<TBase extends AbstractConstructor<TwitterClientBas
                     timeline?: {
                       instructions?: Array<{
                         entries?: Array<{
+                          sortIndex?: string;
                           content?: {
                             itemContent?: {
                               tweet_results?: {
@@ -506,7 +512,11 @@ export function withTimelines<TBase extends AbstractConstructor<TwitterClientBas
               };
 
               const instructions = data.data?.bookmark_collection_timeline?.timeline?.instructions;
-              const pageTweets = parseTweetsFromInstructions(instructions, { quoteDepth: this.quoteDepth, includeRaw });
+              const pageTweets = parseTweetsFromInstructions(instructions, {
+                quoteDepth: this.quoteDepth,
+                includeRaw,
+                includeBookmarkedAt: true,
+              });
               const nextCursor = extractCursorFromInstructions(instructions);
 
               if (data.errors && data.errors.length > 0) {

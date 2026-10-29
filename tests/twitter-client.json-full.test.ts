@@ -163,6 +163,15 @@ describe('parseTweetsFromInstructions with includeRaw', () => {
     expect(tweets).toHaveLength(1);
     expect(tweets[0]._raw).toBeUndefined();
   });
+
+  it('does not add bookmark timestamps without the explicit parser option', () => {
+    const instructions = makeInstruction([{ id: '1', text: 'tweet 1' }]);
+    (instructions[0].entries[0] as { sortIndex?: string }).sortIndex = '1880343906080247431';
+
+    const tweets = parseTweetsFromInstructions(instructions, { quoteDepth: 1 });
+
+    expect(tweets[0]).not.toHaveProperty('bookmarkedAt');
+  });
 });
 
 describe('TwitterClient getTweet with includeRaw option', () => {

@@ -268,6 +268,8 @@ export interface TweetData {
   };
   authorId?: string;
   createdAt?: string;
+  // Timestamp when this tweet was saved as a bookmark (bookmark timelines only).
+  bookmarkedAt?: string;
   replyCount?: number;
   retweetCount?: number;
   likeCount?: number;

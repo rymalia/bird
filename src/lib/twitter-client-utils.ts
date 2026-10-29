@@ -1,5 +1,7 @@
 import type { GraphqlTweetResult, TweetData, TweetMedia, TwitterUser } from './twitter-client-types.js';
 
+const NUMERIC_SORT_INDEX = /^\d+$/;
+
 export function normalizeQuoteDepth(value?: number): number {
   if (value === undefined || value === null) {
     return 1;
@@ -672,12 +674,33 @@ export function collectTweetResultsFromEntry(entry: {
 export interface ParseTweetsOptions {
   quoteDepth: number;
   includeRaw?: boolean;
+  /** Add bookmark save timestamps from top-level timeline entry sortIndex values. */
+  includeBookmarkedAt?: boolean;
+}
+
+export function decodeBookmarkSortIndex(sortIndex: string | undefined): string | undefined {
+  if (typeof sortIndex !== 'string' || !NUMERIC_SORT_INDEX.test(sortIndex)) {
+    return undefined;
+  }
+
+  try {
+    const epochMs = Number(BigInt(sortIndex) >> 20n);
+    if (!Number.isFinite(epochMs)) {
+      return undefined;
+    }
+
+    const date = new Date(epochMs);
+    return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+  } catch {
+    return undefined;
+  }
 }
 
 export function parseTweetsFromInstructions(
   instructions:
     | Array<{
         entries?: Array<{
+          sortIndex?: string;
           content?: {
             itemContent?: {
               tweet_results?: {
@@ -720,7 +743,7 @@ export function parseTweetsFromInstructions(
 ): TweetData[] {
   const options: ParseTweetsOptions =
     typeof quoteDepthOrOptions === 'number' ? { quoteDepth: quoteDepthOrOptions } : quoteDepthOrOptions;
-  const { quoteDepth, includeRaw = false } = options;
+  const { quoteDepth, includeRaw = false, includeBookmarkedAt = false } = options;
 
   const tweets: TweetData[] = [];
   const seen = new Set<string>();
@@ -728,10 +751,14 @@ export function parseTweetsFromInstructions(
   for (const instruction of instructions ?? []) {
     for (const entry of instruction.entries ?? []) {
       const results = collectTweetResultsFromEntry(entry);
+      const bookmarkedAt = includeBookmarkedAt ? decodeBookmarkSortIndex(entry.sortIndex) : undefined;
       for (const result of results) {
         const mapped = mapTweetResult(result, { quoteDepth, includeRaw });
         if (!mapped || seen.has(mapped.id)) {
           continue;
+        }
+        if (bookmarkedAt) {
+          mapped.bookmarkedAt = bookmarkedAt;
         }
         seen.add(mapped.id);
         tweets.push(mapped);

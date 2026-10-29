@@ -396,6 +396,9 @@ export function createCliContext(normalizedArgs: string[], env: NodeJS.ProcessEn
       if (tweet.createdAt) {
         console.log(`${l('date')}${tweet.createdAt}`);
       }
+      if (tweet.bookmarkedAt) {
+        console.log(`Bookmarked: ${tweet.bookmarkedAt}`);
+      }
       const tweetUrl = `https://x.com/${tweet.author.username}/status/${tweet.id}`;
       console.log(`${l('url')}${hyperlink(tweetUrl, tweetUrl, output)}`);
       if (opts.showSeparator ?? true) {

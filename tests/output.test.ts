@@ -126,6 +126,7 @@ describe('output', () => {
       id: '1',
       text: 'hello world',
       author: { username: 'alice', name: 'Alice' },
+      bookmarkedAt: '2026-10-29T01:01:29.239Z',
       media: [{ type: 'photo', url: 'https://img/test.jpg' }],
       article: { title: 'Article title', previewText: 'Preview' },
       quotedTweet: {
@@ -154,6 +155,7 @@ describe('output', () => {
     logPlain.mockRestore();
 
     expect(plainOutput).toContain('Article: Article title');
+    expect(plainOutput).toContain('Bookmarked: 2026-10-29T01:01:29.239Z');
     expect(plainOutput).toContain('PHOTO: https://img/test.jpg');
     expect(plainOutput).toContain('QT @bob:');
     expect(plainOutput).toContain('VIDEO: https://vid/test.mp4');

@@ -102,6 +102,7 @@ describe('TwitterClient timelines includeRaw', () => {
                           },
                         },
                       },
+                      sortIndex: '1880343906080247431',
                     },
                   ],
                 },
@@ -119,6 +120,7 @@ describe('TwitterClient timelines includeRaw', () => {
     expect(result.tweets).toHaveLength(1);
     expect(result.tweets?.[0]._raw).toBeDefined();
     expect(result.tweets?.[0]._raw?.entities?.urls?.[0].expanded_url).toBe('https://example.com');
+    expect(result.tweets?.[0].bookmarkedAt).toBe('2026-10-29T01:01:29.239Z');
   });
 
   it('includes _raw for likes when includeRaw is true', async () => {

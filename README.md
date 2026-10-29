@@ -290,6 +290,7 @@ When using `--json`, tweet objects include:
 | `author` | object | `{ username, name }` |
 | `authorId` | string? | Author's user ID |
 | `createdAt` | string | Timestamp |
+| `bookmarkedAt` | string? | When the tweet was saved as a bookmark (bookmarks output only) |
 | `replyCount` | number | Number of replies |
 | `retweetCount` | number | Number of retweets |
 | `likeCount` | number | Number of likes |

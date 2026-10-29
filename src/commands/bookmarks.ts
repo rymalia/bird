@@ -189,6 +189,14 @@ export function registerBookmarksCommand(program: Command, ctx: CliContext): voi
             }
           }
 
+          // Thread fetches intentionally use the shared parser without bookmark metadata. Restore the
+          // timestamp only on the original bookmark, keeping quoted/expanded context tweets unmarked.
+          outputTweets = outputTweets.map((tweet) =>
+            tweet.id === bookmark.id && bookmark.bookmarkedAt
+              ? { ...tweet, bookmarkedAt: bookmark.bookmarkedAt }
+              : tweet,
+          );
+
           if (includeParent && bookmark.inReplyToStatusId) {
             const alreadyIncluded = outputTweets.some((tweet) => tweet.id === bookmark.inReplyToStatusId);
             if (!alreadyIncluded) {

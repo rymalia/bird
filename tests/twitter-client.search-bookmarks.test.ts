@@ -549,6 +549,89 @@ describe('TwitterClient bookmarks', () => {
     expect(parsedFeatures.graphql_timeline_v2_bookmark_timeline).toBe(true);
   });
 
+  it('decodes bookmark save timestamps across pages and omits invalid values and quoted tweets', async () => {
+    const savedTweets = [
+      ['2115588136302694862', '1880343906080247431', '2026-10-29T01:01:29.239Z'],
+      ['2115564287997395181', '1880343923288193628', '2026-10-29T01:01:45.650Z'],
+      ['2114694007334801673', '1880343970648475108', '2026-10-29T01:02:30.816Z'],
+      ['2115604780093755846', '1880343990251192896', '2026-10-29T01:02:49.511Z'],
+      ['2115351963617394694', '1880344009801426543', '2026-10-29T01:03:08.155Z'],
+    ] as const;
+    const makeEntry = (id: string, sortIndex: string, quoted = false) => ({
+      sortIndex,
+      content: {
+        itemContent: {
+          tweet_results: {
+            result: {
+              rest_id: id,
+              legacy: { full_text: `saved ${id}`, created_at: '2026-01-01T00:00:00Z' },
+              core: { user_results: { result: { legacy: { screen_name: 'saved', name: 'Saved' } } } },
+              ...(quoted
+                ? {
+                    quoted_status_result: {
+                      result: {
+                        rest_id: 'quoted-1',
+                        legacy: { full_text: 'quoted', created_at: '2026-01-01T00:00:00Z' },
+                        core: { user_results: { result: { legacy: { screen_name: 'quoted', name: 'Quoted' } } } },
+                      },
+                    },
+                  }
+                : {}),
+            },
+          },
+        },
+      },
+    });
+    const makePage = (entries: unknown[], cursor?: string) => ({
+      data: {
+        bookmark_timeline_v2: {
+          timeline: {
+            instructions: [
+              {
+                entries: [...entries, ...(cursor ? [{ content: { cursorType: 'Bottom', value: cursor } }] : [])],
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () =>
+          makePage(
+            savedTweets.slice(0, 3).map(([id, sortIndex]) => makeEntry(id, sortIndex, id === savedTweets[0][0])),
+            'cursor-1',
+          ),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () =>
+          makePage([
+            ...savedTweets.slice(3).map(([id, sortIndex]) => makeEntry(id, sortIndex)),
+            makeEntry('invalid-sort-index', 'not-a-number'),
+          ]),
+      });
+
+    const client = new TwitterClient({ cookies: validCookies });
+    const result = await client.getAllBookmarks();
+
+    expect(result.success).toBe(true);
+    expect(result.tweets?.map((tweet) => tweet.bookmarkedAt)).toEqual([
+      '2026-10-29T01:01:29.239Z',
+      '2026-10-29T01:01:45.650Z',
+      '2026-10-29T01:02:30.816Z',
+      '2026-10-29T01:02:49.511Z',
+      '2026-10-29T01:03:08.155Z',
+      undefined,
+    ]);
+    expect(result.tweets?.[0].quotedTweet).toBeDefined();
+    expect(result.tweets?.[0].quotedTweet).not.toHaveProperty('bookmarkedAt');
+  });
+
   it('paginates bookmarks when fetching all', async () => {
     mockFetch
       .mockResolvedValueOnce({

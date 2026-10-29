@@ -1,5 +1,7 @@
 # Session Summary: Translation Feature Implementation
 
+> **⚠️ Status (2026-10-29) — only PR #1 shipped.** The `lang` and `isTranslatable` fields landed on `dev` in `914585e`, on every command that maps tweets, not only `read`. PR #2 (the translation providers and `--translate*` options) was never merged; it is kept in tag `archive/feat-translation-service` (`c997785`), whose message has the restore command. Before reviving it, note that `isTranslatable` is relative to the logged-in account's language, not to the `--translate` target, so decision 4 below would wrongly skip, for example, `--translate es` on an English tweet. The default models named here are also out of date.
+
 **Date:** 2026-01-20
 **Duration:** ~45 minutes
 **Model:** Claude Opus 4.5
